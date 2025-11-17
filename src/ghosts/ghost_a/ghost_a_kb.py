@@ -1,5 +1,6 @@
-from typing import Optional
+from typing import Optional, List, Tuple
 from utils.types_utils import Coord, Percept, MOVES
+from ghosts.KB import KnowledgeBase
 import random
 
 # --- State Definitions ---
@@ -8,7 +9,7 @@ STATE_CHASING = "CHASING"
 STATE_PURSUING = "PURSUING"
 STATE_INVESTIGATING = "INVESTIGATING"
 
-class KnowledgeBaseA:
+class KnowledgeBaseA(KnowledgeBase):
     """
     Implements the 4-state logic for Ghost A using a formal TELL/ASK.
     
@@ -36,16 +37,22 @@ class KnowledgeBaseA:
             # print(f"Ghost A: {self.state} -> {state}")
             self.state = state
 
-    def tell(self, my_pos: Coord, pacman_pos: Optional[Coord], percepts: Percept):
+    def tell(
+        self,
+        my_pos: Coord,
+        pacman_pos: Optional[Coord],
+        other_ghost_pos: List[Tuple[str, Coord]],
+        percepts: Percept
+    ):
         """
         Stores all new facts from the environment and updates the
         KB's internal state.
         """
+        # (Ghost A ignores other_ghost_pos, but it must accept the arg)
+        
         # Store current facts
         self.my_pos = my_pos
         self.percepts = percepts
-
-        # === Run State Transition Logic ===
         
         # Rule 1: Can see Pac-Man
         if pacman_pos:
