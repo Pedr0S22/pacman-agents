@@ -42,22 +42,49 @@ def get_pressed_key() -> str:
 
 def run_game(
     env: Environment,
+    ghost_a: Ghost,
+    ghost_b: Ghost,
+    ghost_c: Ghost,
     sleep_s: float = 0.5
 ):
     """Run the Pac-Man game with keyboard controls."""
-    action = "WAIT"
+    pacman_action = "WAIT"
 
     while not env.victory and not env.game_over:
 
         key = get_pressed_key()
         if key is not None:
-            action = key
+            pacman_action = key
 
-        if action == 'QUIT':
+        if pacman_action == 'QUIT':
             break
 
-        env.step(action)
+        env.step(pacman_action)
 
+        # --- 4. Ghosts' Turn ---
+        
+        # --- Ghost A ---
+        pac_A, others_A, percepts_A = env.get_ghost_percepts('A')
+        move_A = ghost_a.get_next_move(
+            env.ghostA_pos, pac_A, others_A, percepts_A
+        )
+        env.move_ghost('A', move_A)
+
+        # --- Ghost B ---
+        pac_B, others_B, percepts_B = env.get_ghost_percepts('B')
+        move_B = ghost_b.get_next_move(
+            env.ghostB_pos, pac_B, others_B, percepts_B
+        )
+        env.move_ghost('B', move_B)
+        
+        # --- Ghost C ---
+        pac_C, others_C, percepts_C = env.get_ghost_percepts('C')
+        move_C = ghost_c.get_next_move(
+            env.ghostC_pos, pac_C, others_C, percepts_C
+        )
+        env.move_ghost('C', move_C)
+
+        if os.name == 'nt': os.system('cls') # Clear screen (Windows)
         print(env.render())
         print()
         time.sleep(sleep_s)
@@ -86,7 +113,8 @@ def run_pacman():
         ghostC_start=ghostC_start
     )
 
-    run_game(env)
+    # --- Run the Game ---
+    run_game(env, ghost_a, ghost_b, ghost_c)
 
 
 if __name__ == "__main__":

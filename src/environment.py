@@ -1,7 +1,6 @@
-from typing import Tuple, Set, Dict, List
+from typing import Tuple, Set, Dict, List, Optional
+from utils.types_utils import Coord
 import random
-
-Coord = Tuple[int, int]
 
 class Environment:
     """Grid representing the game environment."""
@@ -33,6 +32,11 @@ class Environment:
         self.score: int = 0
         self.lives: int = 2
 
+        # Storing start positions for respawn
+        self.ghostA_start_pos = ghostA_start
+        self.ghostB_start_pos = ghostB_start
+        self.ghostC_start_pos = ghostC_start
+
     def in_bounds(self, c: Coord) -> bool:
         """Return True if coordinate c is within grid bounds."""
         x, y = c
@@ -58,6 +62,70 @@ class Environment:
             (not self.in_bounds(c)) or
             (c in self.walls)
         )
+    
+    def get_ghost_percepts(
+        self,
+        ghost_id: str # 'A', 'B', or 'C'
+    ) -> Tuple[Optional[Coord], List[Tuple[str, Coord]], Dict[Coord, str]]:
+        """
+        Calculates the 4-cell line-of-sight percepts for a ghost.
+        Line-of-sight is blocked by walls.
+
+        Returns a tuple of:
+        1. pacman_pos: (x,y) if seen, else None
+        2. other_ghosts: List[(id, (x,y))] of other seen ghosts
+        3. percept_map: A dictionary {(x,y): "ITEM"} for all seen tiles.
+        """
+        
+        percept_map: Dict[Coord, str] = {}
+        pacman_pos_seen: Optional[Coord] = None
+        other_ghosts_seen: List[Tuple[str, Coord]] = []
+        
+        ghost_pos = (0,0)
+        if ghost_id == 'A': ghost_pos = self.ghostA_pos
+        elif ghost_id == 'B': ghost_pos = self.ghostB_pos
+        elif ghost_id == 'C': ghost_pos = self.ghostC_pos
+        
+        # Define the 4 cardinal directions
+        directions = [(0, -1), (0, 1), (-1, 0), (1, 0)] # UP, DOWN, LEFT, RIGHT
+        
+        for dx, dy in directions:
+            for i in range(1, 5): # See up to 4 cells
+                x, y = ghost_pos[0] + dx * i, ghost_pos[1] + dy * i
+                pos = (x, y)
+                
+                # Check for walls first, as they block sight
+                if pos in self.walls:
+                    percept_map[pos] = "WALL"
+                    break # Stop seeing in this direction
+                
+                # Check for Pac-Man
+                if pos == self.pacman_pos:
+                    percept_map[pos] = "PACMAN"
+                    pacman_pos_seen = pos
+                
+                # Check for other ghosts
+                elif pos == self.ghostA_pos and ghost_id != 'A':
+                    percept_map[pos] = "GHOST"
+                    other_ghosts_seen.append(("A", pos))
+                elif pos == self.ghostB_pos and ghost_id != 'B':
+                    percept_map[pos] = "GHOST"
+                    other_ghosts_seen.append(("B", pos))
+                elif pos == self.ghostC_pos and ghost_id != 'C':
+                    percept_map[pos] = "GHOST"
+                    other_ghosts_seen.append(("C", pos))
+                
+                # Check for pellets
+                elif pos in self.pellets:
+                    percept_map[pos] = "PELLET"
+                
+                # If nothing else, it's an empty, traversable tile
+                else:
+                    # We only add empty tiles if they are not the ghost spawn
+                    if pos not in self.ghost_spawns:
+                        percept_map[pos] = "EMPTY"
+
+        return pacman_pos_seen, other_ghosts_seen, percept_map
 
     def sense(self) -> Dict:
         """Return a percept dictionary describing the current state."""
@@ -104,7 +172,7 @@ class Environment:
 
         self.iterations += 1
 
-        # Move according to the action
+        # Move Pac-Man according to the action
         moves = {'RIGHT': (1, 0), 'LEFT': (-1, 0), 'DOWN': (0, 1), 'UP': (0, -1)}
         if action in moves:
             dx, dy = moves[action]
@@ -117,9 +185,12 @@ class Environment:
             self.pellets.remove(self.pacman_pos)
             self.score +=10
 
-        if self.pacman_pos == self.ghostA_pos or self.pacman_pos == self.ghostB_pos or self.pacman_pos == self.ghostC_pos:
+        # Pac-Man is the same position as Ghosts
+        if self.pacman_pos == self.ghostA_pos or \
+            self.pacman_pos == self.ghostB_pos or \
+            self.pacman_pos == self.ghostC_pos:
+            
             self.lives -=1
-
             # Ghosts return to spawn area
             self.ghostA_pos = self.ghostA_start_pos
             self.ghostB_pos = self.ghostB_start_pos
