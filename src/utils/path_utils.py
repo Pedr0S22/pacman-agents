@@ -1,6 +1,6 @@
 from typing import Set, List, Optional
 from collections import deque
-from types_utils import Coord, MOVES
+from .types_utils import Coord, MOVES
 
 def get_neighbors(pos: Coord) -> List[Coord]:
     """Gets the 4 adjacent neighbors of a coordinate."""

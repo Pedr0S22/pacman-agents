@@ -3,7 +3,7 @@ from utils.types_utils import Coord, Percept, MOVES
 from utils.path_utils import bfs_pathfinder, get_move_from_path, find_nearest_coord, get_neighbors
 from utils.fol_components import Predicate, Constant, Variable, unify
 from ghosts.KB import KnowledgeBase
-from predicates import *
+from .predicates import *
 import random
 
 class KnowledgeBaseC(KnowledgeBase):

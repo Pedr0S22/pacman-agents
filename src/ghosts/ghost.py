@@ -1,6 +1,6 @@
 from typing import Tuple, List, Optional
 from utils.types_utils import Coord, Percept
-from KB import KnowledgeBase
+from .KB import KnowledgeBase
 
 class Ghost:
     """
