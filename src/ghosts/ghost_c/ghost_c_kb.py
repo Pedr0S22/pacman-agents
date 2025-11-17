@@ -2,30 +2,27 @@ from typing import Tuple, Dict, Set, List, Optional
 from utils.types_utils import Coord, Percept, MOVES
 from utils.path_utils import bfs_pathfinder, get_move_from_path, find_nearest_coord, get_neighbors
 from utils.fol_components import Predicate, Constant, Variable, unify
+from ghosts.KB import KnowledgeBase
 from predicates import *
 import random
-import math
 
-class KnowledgeBaseC:
+class KnowledgeBaseC(KnowledgeBase):
     """
     KB for Ghost C ("The Overlord").
     This is a formal FOL KB that follows the TELL/ASK model.
-    TELL: Updates the fact database.
-    ASK: Runs inference, pathfinding, and returns a final action.
+    It has ZERO initial knowledge of the map size or layout.
     """
-    def __init__(self, w: int, h: int):
-        self.w, self.h = w, h
-        
-        # A set of ground predicate "facts"
+    def __init__(self):
+        # --- The Knowledge Base ---
         self.facts: Set[Predicate] = set()
 
-        # --- Stored Percepts ---
+        # --- Stored Percepts (from TELL) ---
         self.my_pos: Coord = (0, 0) # My current position
         self.pacman_pos_percept: Optional[Coord] = None
         self.other_ghosts_percept: List[Tuple[str, Coord]] = []
         self.percepts: Percept = {}
 
-        # --- Pathfinding State  ---
+        # --- Pathfinding State (Managed by ASK) ---
         self.goal: Optional[Coord] = None
         self.current_path: List[Coord] = []
         
@@ -39,24 +36,13 @@ class KnowledgeBaseC:
         self.G = Variable("G")
         self.GX = Variable("GX")
         self.GY = Variable("GY")
-        self.R = Variable("R")
+        self.JX = Variable("JX")
+        self.JY = Variable("JY")
         self.N = Variable("N")
 
         # --- Static Knowledge ---
-        self.region_map: Dict[Coord, str] = {}
-        mid_x, mid_y = w // 2, h // 2
-        for x in range(w):
-            for y in range(h):
-                c = (x, y)
-                if x < mid_x and y < mid_y: r_id = "R1"
-                elif x >= mid_x and y < mid_y: r_id = "R2"
-                elif x < mid_x and y >= mid_y: r_id = "R3"
-                else: r_id = "R4"
-                self.region_map[c] = r_id
-                self.assert_fact(InRegion(Constant(x), Constant(y), Constant(r_id)))
-        
-        for r_id in ["R1", "R2", "R3", "R4"]:
-            self.assert_fact(RegionPelletCount(Constant(r_id), Constant(0)))
+        # REMOVED: All w, h, region_map, and RegionPelletCount logic.
+        # The KB starts truly empty.
 
     # --- CORE KB METHODS ---
 
@@ -78,7 +64,7 @@ class KnowledgeBaseC:
         self.percepts = percepts
 
         # --- 2. Retract Old Dynamic Beliefs ---
-        old_pacman_pos = None
+        old_pacman_pos = None 
         bindings = self.query(PacmanPos(self.PX, self.PY))
         if bindings:
             old_pacman_pos = (bindings[0][self.PX].value, bindings[0][self.PY].value)
@@ -91,7 +77,8 @@ class KnowledgeBaseC:
         current_pac_clue = None
         
         # Assert self as safe
-        self.assert_fact(LearnedSafe(Constant(my_pos[0]), Constant(my_pos[1])))
+        if not self.query(LearnedSafe(Constant(my_pos[0]), Constant(my_pos[1]))):
+             self._add_safe_tile(my_pos) # Learn our own tile
 
         for pos, item in percepts.items():
             cx, cy = Constant(pos[0]), Constant(pos[1])
@@ -101,29 +88,24 @@ class KnowledgeBaseC:
                 self.facts.discard(LearnedSafe(cx, cy))
             else:
                 # If not a wall, it's safe
-                if LearnedSafe(cx, cy) not in self.facts:
-                    self.assert_fact(LearnedSafe(cx, cy))
-                    # Check/update topology for this new safe tile
-                    self._check_topology(pos)
-                    # Also check neighbors
-                    for n_pos in get_neighbors(pos):
-                        self._check_topology(n_pos)
+                if not self.query(LearnedSafe(cx, cy)):
+                    self._add_safe_tile(pos) # Learn the new safe tile
 
                 if item == "PELLET":
-                    if SawPelletAt(cx, cy) not in self.facts:
+                    if not self.query(SawPelletAt(cx, cy)):
                         self.assert_fact(SawPelletAt(cx, cy))
-                        r_id = self.region_map.get(pos)
-                        if r_id: self._increment_region_count(r_id)
+                        # NEW: Update pellet count for nearest junction
+                        self._update_pellet_count_near(pos, 1)
                 
                 elif item == "EMPTY":
-                    if SawPelletAt(cx, cy) in self.facts:
+                    if self.query(SawPelletAt(cx, cy)):
                         current_pac_clue = pos
                         self.facts.discard(SawPelletAt(cx, cy))
-                        r_id = self.region_map.get(pos)
-                        if r_id: self._decrement_region_count(r_id)
+                        # NEW: Update pellet count for nearest junction
+                        self._update_pellet_count_near(pos, -1)
                 
                 elif item == "PACMAN":
-                    self.pacman_pos_percept = pos # Ensure this is set
+                    self.pacman_pos_percept = pos
         
         # --- 4. Assert Agent Beliefs (Priority: Percept > Clue) ---
         if self.pacman_pos_percept:
@@ -178,20 +160,11 @@ class KnowledgeBaseC:
         
         else:
             # Rule 4: Disjointed Hunt (Analyst)
-            region_bindings = self.query(RegionPelletCount(self.R, self.N))
-            
-            richest_r = None
-            max_n = -1
-            for binding in region_bindings:
-                n = binding[self.N].value
-                if n > max_n:
-                    max_n = n
-                    richest_r = binding[self.R].value
-            
-            if richest_r and max_n > 0:
-                ghost_bindings = self.query(GhostPos(self.G, self.GX, self.GY))
-                other_g_pos = [(b[self.GX].value, b[self.GY].value) for b in ghost_bindings]
-                new_goal = self._find_furthest_point_in_region(richest_r, other_g_pos, safe_tiles)
+            # NEW: Find richest *junction*
+            ghost_bindings = self.query(GhostPos(self.G, self.GX, self.GY))
+            other_g_pos = [(b[self.GX].value, b[self.GY].value) for b in ghost_bindings]
+            new_goal = self._find_disjointed_hunt_goal(other_g_pos, safe_tiles)
+
 
         # Rule 5: Default Explore (if all else fails)
         if new_goal is None:
@@ -224,7 +197,6 @@ class KnowledgeBaseC:
                 next_pos = self.current_path[current_step_index + 1]
                 return get_move_from_path(self.my_pos, [self.my_pos, next_pos])
 
-        # Recalculate if path is empty but goal exists
         if self.goal and not self.current_path:
             path = bfs_pathfinder(self.my_pos, self.goal, safe_tiles)
             self.current_path = path if path else []
@@ -249,7 +221,7 @@ class KnowledgeBaseC:
             if unify(query_predicate, fact) is not None:
                 facts_to_remove.add(fact)
             elif query_predicate.is_ground() and unify(fact, query_predicate) is not None:
-                facts_to_remove.add(fact)
+                 facts_to_remove.add(fact)
         self.facts.difference_update(facts_to_remove)
 
     def assert_fact(self, fact: Predicate):
@@ -258,40 +230,61 @@ class KnowledgeBaseC:
 
     # --- Internal KB Maintenance Helpers ---
     
-    def _update_region_count(self, region_id: str, delta: int):
-        r_const = Constant(region_id)
-        n_var = Variable("N")
-        bindings = self.query(RegionPelletCount(r_const, n_var))
-        
-        if bindings:
-            old_count = bindings[0][n_var].value
-            old_fact = RegionPelletCount(r_const, Constant(old_count))
-            new_count = old_count + delta
-            new_fact = RegionPelletCount(r_const, Constant(new_count))
-            self.facts.discard(old_fact)
-            self.facts.add(new_fact)
-        else:
-            new_fact = RegionPelletCount(r_const, Constant(max(0, delta)))
-            self.facts.add(new_fact)
+    def _add_safe_tile(self, pos: Coord):
+        """Adds a tile as safe and updates unknown/junction status."""
+        self.assert_fact(LearnedSafe(Constant(pos[0]), Constant(pos[1])))
+        # Check/update topology for this new safe tile
+        self._check_topology(pos)
+        # Also check neighbors
+        for n_pos in get_neighbors(pos):
+             self._check_topology(n_pos)
 
     def _check_topology(self, pos: Coord):
-        if self.query(LearnedSafe(Constant(pos[0]), Constant(pos[1]))):
-            safe_neighbors = 0
-            for n_pos in get_neighbors(pos):
-                if self.query(LearnedSafe(Constant(n_pos[0]), Constant(n_pos[1]))):
-                    safe_neighbors += 1
-            
-            c_pos = (Constant(pos[0]), Constant(pos[1]))
-            if safe_neighbors >= 3:
+        if not self.query(LearnedSafe(Constant(pos[0]), Constant(pos[1]))):
+            return # Only check known safe tiles
+
+        safe_neighbors = 0
+        for n_pos in get_neighbors(pos):
+            if self.query(LearnedSafe(Constant(n_pos[0]), Constant(n_pos[1]))):
+                safe_neighbors += 1
+        
+        c_pos = (Constant(pos[0]), Constant(pos[1]))
+        if safe_neighbors >= 3:
+            if not self.query(IsJunction(c_pos[0], c_pos[1])):
                 self.assert_fact(IsJunction(c_pos[0], c_pos[1]))
                 self.facts.discard(IsTunnel(c_pos[0], c_pos[1]))
-            elif safe_neighbors == 2:
-                self.assert_fact(IsTunnel(c_pos[0], c_pos[1]))
-                self.facts.discard(IsJunction(c_pos[0], c_pos[1]))
-            else:
-                self.facts.discard(IsJunction(c_pos[0], c_pos[1]))
-                self.facts.discard(IsTunnel(c_pos[0], c_pos[1]))
+                # NEW: Initialize pellet count for new junction
+                self.assert_fact(PelletCountNear(c_pos[0], c_pos[1], Constant(0)))
+        elif safe_neighbors == 2:
+            self.assert_fact(IsTunnel(c_pos[0], c_pos[1]))
+            self.facts.discard(IsJunction(c_pos[0], c_pos[1]))
+        else:
+            self.facts.discard(IsJunction(c_pos[0], c_pos[1]))
+            self.facts.discard(IsTunnel(c_pos[0], c_pos[1]))
     
+    def _update_pellet_count_near(self, pellet_pos: Coord, delta: int):
+        """Finds nearest junction to pellet and updates its count."""
+        safe_tiles = self.get_safe_tiles()
+        junctions = self.get_junctions()
+        if not junctions:
+            return # Can't update if we don't know any junctions
+
+        nearest_j = find_nearest_coord(pellet_pos, junctions, safe_tiles)
+        if not nearest_j:
+            return # Pellet is not reachable from any junction?
+            
+        jx_const, jy_const = Constant(nearest_j[0]), Constant(nearest_j[1])
+        n_var = Variable("N")
+        bindings = self.query(PelletCountNear(jx_const, jy_const, n_var))
+        
+        old_count = 0
+        if bindings:
+            old_count = bindings[0][n_var].value
+            self.facts.discard(PelletCountNear(jx_const, jy_const, Constant(old_count)))
+            
+        new_count = old_count + delta
+        self.assert_fact(PelletCountNear(jx_const, jy_const, Constant(new_count)))
+
     def get_safe_tiles(self) -> Set[Coord]:
         safe_tiles = set()
         bindings_list = self.query(LearnedSafe(self.X, self.Y))
@@ -299,13 +292,16 @@ class KnowledgeBaseC:
             safe_tiles.add((bindings[self.X].value, bindings[self.Y].value))
         return safe_tiles
 
-    # --- Internal Rule Helpers (moved from agent) ---
-    
-    def _find_flank_pos(self, pac_pos: Coord, safe_tiles: Set[Coord]) -> Optional[Coord]:
+    def get_junctions(self) -> Set[Coord]:
         junctions = set()
         j_bindings = self.query(IsJunction(self.X, self.Y))
         for b in j_bindings: junctions.add((b[self.X].value, b[self.Y].value))
-        
+        return junctions
+
+    # --- Internal Rule Helpers (moved from agent) ---
+    
+    def _find_flank_pos(self, pac_pos: Coord, safe_tiles: Set[Coord]) -> Optional[Coord]:
+        junctions = self.get_junctions()
         if not junctions: return None
         
         nearby_junctions = []
@@ -330,45 +326,58 @@ class KnowledgeBaseC:
                 return None
         return None
 
-    def _find_furthest_point_in_region(self, region_id: str, other_ghost_pos: List[Coord], safe_tiles: Set[Coord]) -> Optional[Coord]:
-        region_tiles = set()
-        r_bindings = self.query(InRegion(self.X, self.Y, Constant(region_id)))
-        for b in r_bindings:
-            p = (b[self.X].value, b[self.Y].value)
-            if p in safe_tiles: region_tiles.add(p)
+    def _find_disjointed_hunt_goal(self, other_ghost_pos: List[Coord], safe_tiles: Set[Coord]) -> Optional[Coord]:
+        """NEW Rule 4: Find richest junction, furthest from other ghosts."""
         
-        if not region_tiles: return None
-        
-        if not other_ghost_pos:
-            pellet_bindings = self.query(SawPelletAt(self.X, self.Y))
-            for b in pellet_bindings:
-                p = (b[self.X].value, b[self.Y].value)
-                if p in region_tiles: return p
-            return list(region_tiles)[0]
+        junction_bindings = self.query(PelletCountNear(self.JX, self.JY, self.N))
+        if not junction_bindings:
+            return None # No junctions with pellet counts known
 
+        # Find richest junction
+        richest_junctions: List[Coord] = []
+        max_n = -1
+        for b in junction_bindings:
+            n = b[self.N].value
+            if n > max_n:
+                max_n = n
+                richest_junctions = [(b[self.JX].value, b[self.JY].value)]
+            elif n == max_n:
+                richest_junctions.append((b[self.JX].value, b[self.JY].value))
+
+        if not richest_junctions or max_n == 0:
+            return None # No pellets found
+            
+        # If no other ghosts, just pick richest
+        if not other_ghost_pos:
+            return find_nearest_coord(self.my_pos, set(richest_junctions), safe_tiles)
+            
+        # Find richest junction *furthest* from other ghosts
         avg_ghost_x = sum(p[0] for p in other_ghost_pos) / len(other_ghost_pos)
         avg_ghost_y = sum(p[1] for p in other_ghost_pos) / len(other_ghost_pos)
         
-        farthest_p, max_dist_sq = None, -1
-        for p in region_tiles:
-            dist_sq = (p[0] - avg_ghost_x)**2 + (p[1] - avg_ghost_y)**2
+        farthest_j = None
+        max_dist_sq = -1
+
+        for j_pos in richest_junctions:
+            dist_sq = (j_pos[0] - avg_ghost_x)**2 + (j_pos[1] - avg_ghost_y)**2
             if dist_sq > max_dist_sq:
-                max_dist_sq, farthest_p = dist_sq, p
-        return farthest_p
+                max_dist_sq = dist_sq
+                farthest_j = j_pos
+        
+        return farthest_j
+
 
     def _find_explore_goal(self, safe_tiles: Set[Coord]) -> Optional[Coord]:
         unknown_tiles = set()
         for sx, sy in safe_tiles:
-            for n_pos in get_neighbors((sx,sy)):
+             for n_pos in get_neighbors((sx,sy)):
                 if n_pos not in safe_tiles and not self.query(LearnedWall(Constant(n_pos[0]), Constant(n_pos[1]))):
                     unknown_tiles.add(n_pos)
         
         if unknown_tiles:
-            return find_nearest_coord(self.my_pos, unknown_tiles, safe_tiles)
+             return find_nearest_coord(self.my_pos, unknown_tiles, safe_tiles)
         
-        junctions = set()
-        j_bindings = self.query(IsJunction(self.X, self.Y))
-        for b in j_bindings: junctions.add((b[self.X].value, b[self.Y].value))
+        junctions = self.get_junctions()
         if junctions:
             return find_nearest_coord(self.my_pos, junctions, safe_tiles)
         

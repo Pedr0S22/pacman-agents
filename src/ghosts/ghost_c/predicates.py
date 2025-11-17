@@ -22,13 +22,17 @@ class IsTunnel(LocationBasedPredicate):
     """Fact: IsTunnel(x, y) - Inferred from map"""
     pass
 
-class InRegion(Predicate):
-    """Fact: InRegion(x, y, RegionID)"""
-    def __init__(self, x: Term, y: Term, region: Term):
-        super().__init__(x, y, region)
-        self.x = x
-        self.y = y
-        self.region = region
+
+class PelletCountNear(Predicate):
+    """Belief: PelletCountNear(Jx, Jy, N)
+    "I believe the junction at (Jx, Jy) is a gateway to N pellets."
+    """
+    def __init__(self, jx: Term, jy: Term, count: Term):
+        super().__init__(jx, jy, count)
+        self.jx = jx
+        self.jy = jy
+        self.count = count
+
 
 # --- Dynamic Belief Predicates ---
 
@@ -50,10 +54,3 @@ class GhostPos(Predicate):
         self.agent_id = agent_id
         self.x = x
         self.y = y
-
-class RegionPelletCount(Predicate):
-    """Belief: RegionPelletCount(RegionID, N)"""
-    def __init__(self, region: Term, count: Term):
-        super().__init__(region, count)
-        self.region = region
-        self.count = count
