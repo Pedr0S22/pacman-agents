@@ -1,9 +1,10 @@
 from typing import Tuple, Set, List, Optional
 from utils.types_utils import Coord, Percept, MOVES
 from utils.path_utils import *
+from ghosts.KB import KnowledgeBase
 import random
 
-class KnowledgeBaseB:
+class KnowledgeBaseB(KnowledgeBase):
     """
     KB for Ghost B.
     This is a "smart" PL KB. It learns the map, maintains beliefs, and contains all
@@ -39,18 +40,21 @@ class KnowledgeBaseB:
         self,
         my_pos: Coord,
         pacman_pos: Optional[Coord],
+        other_ghost_pos: List[Tuple[str, Coord]], # <-- Added this
         percepts: Percept
     ):
         """
         Stores all new facts and updates the KB's internal map
         and belief state.
         """
+        # (Ghost B ignores other_ghost_pos, but it must accept the arg)
+        
         # --- 1. Store Current Facts ---
         self.my_pos = my_pos
         self.pacman_pos_percept = pacman_pos
         self.percepts = percepts
         
-        # Add self to known safe tiles
+        # ... (rest of tell method is unchanged) ...
         if my_pos not in self.safe_tiles:
             self._add_safe_tile(my_pos)
 
@@ -90,7 +94,6 @@ class KnowledgeBaseB:
             if self.clue_age > self.max_clue_age:
                 self.pacman_clue = None # Clue is stale
                 self.clue_age = 0
-
 
     def ask(self) -> str:
         """
