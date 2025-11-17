@@ -72,9 +72,9 @@ def run_pacman():
     kb_b = KnowledgeBaseB()
     kb_c = KnowledgeBaseC()
 
-    ghost_A_agent = Ghost(kb_a)
-    ghost_B_agent = Ghost(kb_b)
-    ghost_C_agent = Ghost(kb_c)
+    ghost_a = Ghost(kb_a)
+    ghost_b = Ghost(kb_b)
+    ghost_c = Ghost(kb_c)
 
     env = Environment(
         width, height,
