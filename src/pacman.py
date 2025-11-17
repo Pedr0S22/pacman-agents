@@ -1,9 +1,12 @@
-from typing import Tuple, Set, Dict, List
+from typing import Tuple
 from environment import Environment, generate_maze
-import random
 import os
-import sys
 import time
+
+from ghosts.ghost import Ghost
+from ghosts.ghost_a.ghost_a_kb import KnowledgeBaseA
+from ghosts.ghost_b.ghost_b_kb import KnowledgeBaseB
+from ghosts.ghost_c.ghost_c_kb import KnowledgeBaseC
 
 Coord = Tuple[int, int]
 
@@ -64,6 +67,14 @@ def run_pacman():
     """Game entry point: create a maze, instantiate the environment, run the game."""
     width, height = 25, 10
     walls, pellets, pacman_start, ghostA_start, ghostB_start, ghostC_start = generate_maze(w=width, h=height, pellet_density=0.6)
+
+    kb_a = KnowledgeBaseA()
+    kb_b = KnowledgeBaseB()
+    kb_c = KnowledgeBaseC()
+
+    ghost_A_agent = Ghost(kb_a)
+    ghost_B_agent = Ghost(kb_b)
+    ghost_C_agent = Ghost(kb_c)
 
     env = Environment(
         width, height,
