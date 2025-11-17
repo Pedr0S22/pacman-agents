@@ -18,7 +18,7 @@ class KnowledgeBaseA:
         - Runs the state machine, determines a goal, calculates a
         - safe move, and returns a single action string.
     """
-    def __init__(self, patrol_points: Optional[list[Coord]] = None):
+    def __init__(self):
         # --- Internal State ---
         self.state: str = STATE_PATROLLING
         

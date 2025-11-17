@@ -10,8 +10,8 @@ class GhostA:
         1. TELLs the KB all new information.
         2. ASKs the KB for one final, safe action.
     """
-    def __init__(self, patrol_points: Optional[list[Coord]] = None):
-        self.kb = KnowledgeBaseA(patrol_points)
+    def __init__(self):
+        self.kb = KnowledgeBaseA()
 
     def get_next_move(
         self,
