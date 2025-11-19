@@ -22,11 +22,12 @@ class KnowledgeBaseA(KnowledgeBase):
     def __init__(self):
         # --- Internal State ---
         self.state: str = STATE_PATROLLING
-        
+
         # --- Memory ---
         self.last_known_pacman_pos: Optional[Coord] = None
         self.last_known_direction: str = 'WAIT'
         self.investigation_direction: str = 'WAIT'
+        self.patrol_direction: str = 'WAIT'
         
         # --- Percepts (Stored by TELL) ---
         self.my_pos: Coord = (0, 0)
@@ -124,8 +125,16 @@ class KnowledgeBaseA(KnowledgeBase):
         elif self.state == STATE_INVESTIGATING:
             dx, dy = MOVES[self.investigation_direction]
             goal = (self.my_pos[0] + dx, self.my_pos[1] + dy)
-        elif self.state == STATE_PATROLLING:
 
+        elif self.state == STATE_PATROLLING:
+            # 1. Check if current patrol direction is valid
+            if self.patrol_direction != 'WAIT':
+                dx, dy = MOVES[self.patrol_direction]
+                next_pos = (self.my_pos[0] + dx, self.my_pos[1] + dy)
+                if self.percepts.get(next_pos) != "WALL":
+                    return self.patrol_direction # Keep going!
+            
+            # 2. If invalid or waiting, pick a new valid direction
             possible_moves = []
             for move, (dx, dy) in MOVES.items():
                 if move == 'WAIT': continue
@@ -134,62 +143,43 @@ class KnowledgeBaseA(KnowledgeBase):
                     possible_moves.append(move)
             
             if possible_moves:
-                return random.choice(possible_moves)
-            else:
-                return 'WAIT' # Trapped
-        
-        if goal is None:
-            # This should only be hit if state is PATROLLING
+                # Pick new direction and save it
+                self.patrol_direction = random.choice(possible_moves)
+                return self.patrol_direction
             return 'WAIT'
 
-        # 2. Find greedy move towards goal
-        move = 'WAIT'
+        if goal is None: return 'WAIT'
+
+        # --- Smart Chase (Wall Following Heuristic) ---
+        
+        # Calculate ideal vector
         dx = goal[0] - self.my_pos[0]
         dy = goal[1] - self.my_pos[1]
         
-        move_options = []
-        if dx > 0: move_options.append('RIGHT')
-        if dx < 0: move_options.append('LEFT')
-        if dy > 0: move_options.append('DOWN')
-        if dy < 0: move_options.append('UP')
-        
-        if not move_options and self.my_pos != goal:
-            # Goal is not reachable by cardinal moves
-            return 'WAIT'
-        if not move_options:
-            return 'WAIT' # We are at the goal
-
-        # Prefer non-diagonal moves
-        if abs(dx) > abs(dy):
-            move = 'RIGHT' if dx > 0 else 'LEFT'
+        # Prioritize Main Axis, then Perpendicular Axis
+        primary_moves = []
+        if abs(dx) >= abs(dy):
+            primary_moves.append('RIGHT' if dx > 0 else 'LEFT')
+            if dy != 0: primary_moves.append('DOWN' if dy > 0 else 'UP')
         else:
-            move = 'DOWN' if dy > 0 else 'UP'
-        
-        # 3. Check for wall collision
-        next_x = self.my_pos[0] + MOVES[move][0]
-        next_y = self.my_pos[1] + MOVES[move][1]
-        
-        if self.percepts.get((next_x, next_y)) == "WALL":
-            # Can't go this way, try other options
-            if move in move_options:
-                move_options.remove(move)
-            
-            for alt_move in move_options:
-                alt_x = self.my_pos[0] + MOVES[alt_move][0]
-                alt_y = self.my_pos[1] + MOVES[alt_move][1]
-                if self.percepts.get((alt_x, alt_y)) != "WALL":
-                    move = alt_move # Found a valid alternative
-                    return move # Return safe move
-            
-            # All primary options are blocked, try anything
-            all_moves = ['UP', 'DOWN', 'LEFT', 'RIGHT']
-            random.shuffle(all_moves)
-            for final_move in all_moves:
-                fin_x = self.my_pos[0] + MOVES[final_move][0]
-                fin_y = self.my_pos[1] + MOVES[final_move][1]
-                if self.percepts.get((fin_x, fin_y)) != "WALL":
-                    return final_move # Return *any* safe move
-            
-            return 'WAIT' # Completely trapped
+            primary_moves.append('DOWN' if dy > 0 else 'UP')
+            if dx != 0: primary_moves.append('RIGHT' if dx > 0 else 'LEFT')
 
-        return move # Return chosen, safe move
+        # Try primary moves first
+        for move in primary_moves:
+            mx, my = MOVES[move]
+            check = (self.my_pos[0] + mx, self.my_pos[1] + my)
+            if self.percepts.get(check) != "WALL":
+                return move
+        
+        # If blocked, try Perpendicular moves (Wall Following logic)
+        # i.e., if I want to go RIGHT but can't, try UP or DOWN
+        all_moves = ['UP', 'DOWN', 'LEFT', 'RIGHT']
+        for move in all_moves:
+            if move in primary_moves: continue # Already checked
+            mx, my = MOVES[move]
+            check = (self.my_pos[0] + mx, self.my_pos[1] + my)
+            if self.percepts.get(check) != "WALL":
+                return move # Take the escape route
+        
+        return 'WAIT'
