@@ -78,7 +78,7 @@ class KnowledgeBaseC(KnowledgeBase):
         
         # Assert self as safe
         if not self.query(LearnedSafe(Constant(my_pos[0]), Constant(my_pos[1]))):
-             self._add_safe_tile(my_pos) # Learn our own tile
+            self._add_safe_tile(my_pos) # Learn our own tile
 
         for pos, item in percepts.items():
             cx, cy = Constant(pos[0]), Constant(pos[1])
@@ -173,6 +173,12 @@ class KnowledgeBaseC(KnowledgeBase):
         # --- 2. Update Goal and Path (Pathfinding Logic) ---
         if new_goal is None:
             return self._get_random_safe_move() # No goal, just move randomly
+        
+        current_safe_percepts = {
+            pos for pos, item in self.percepts.items()
+            if item != "WALL"
+        }
+        walkable_mesh = safe_tiles.union(current_safe_percepts)
 
         if new_goal and (new_goal != self.goal or not self.current_path):
             self.goal = new_goal
@@ -189,7 +195,8 @@ class KnowledgeBaseC(KnowledgeBase):
                 current_step_index = self.current_path.index(self.my_pos)
             except ValueError:
                 self.current_path = []
-                path = bfs_pathfinder(self.my_pos, self.goal, safe_tiles)
+                # Use walkable_mesh instead of safe_tiles
+                path = bfs_pathfinder(self.my_pos, self.goal, walkable_mesh)
                 self.current_path = path if path else []
                 current_step_index = 0
             
@@ -221,7 +228,7 @@ class KnowledgeBaseC(KnowledgeBase):
             if unify(query_predicate, fact) is not None:
                 facts_to_remove.add(fact)
             elif query_predicate.is_ground() and unify(fact, query_predicate) is not None:
-                 facts_to_remove.add(fact)
+                facts_to_remove.add(fact)
         self.facts.difference_update(facts_to_remove)
 
     def assert_fact(self, fact: Predicate):
@@ -237,7 +244,7 @@ class KnowledgeBaseC(KnowledgeBase):
         self._check_topology(pos)
         # Also check neighbors
         for n_pos in get_neighbors(pos):
-             self._check_topology(n_pos)
+            self._check_topology(n_pos)
 
     def _check_topology(self, pos: Coord):
         if not self.query(LearnedSafe(Constant(pos[0]), Constant(pos[1]))):
@@ -327,55 +334,57 @@ class KnowledgeBaseC(KnowledgeBase):
         return None
 
     def _find_disjointed_hunt_goal(self, other_ghost_pos: List[Coord], safe_tiles: Set[Coord]) -> Optional[Coord]:
-        """NEW Rule 4: Find richest junction, furthest from other ghosts."""
-        
+        """
+        NEW Rule 4: Find BEST junction.
+        Score = (Pellets At Junction) / (Distance to Me + 1)
+        This prevents chasing 5 pellets across the map when 4 are nearby.
+        """
         junction_bindings = self.query(PelletCountNear(self.JX, self.JY, self.N))
         if not junction_bindings:
-            return None # No junctions with pellet counts known
+            return None
 
-        # Find richest junction
-        richest_junctions: List[Coord] = []
-        max_n = -1
+        best_junction = None
+        best_score = -1.0
+        
         for b in junction_bindings:
-            n = b[self.N].value
-            if n > max_n:
-                max_n = n
-                richest_junctions = [(b[self.JX].value, b[self.JY].value)]
-            elif n == max_n:
-                richest_junctions.append((b[self.JX].value, b[self.JY].value))
-
-        if not richest_junctions or max_n == 0:
-            return None # No pellets found
+            j_pos = (b[self.JX].value, b[self.JY].value)
+            pellet_count = b[self.N].value
             
-        # If no other ghosts, just pick richest
-        if not other_ghost_pos:
-            return find_nearest_coord(self.my_pos, set(richest_junctions), safe_tiles)
-            
-        # Find richest junction *furthest* from other ghosts
-        avg_ghost_x = sum(p[0] for p in other_ghost_pos) / len(other_ghost_pos)
-        avg_ghost_y = sum(p[1] for p in other_ghost_pos) / len(other_ghost_pos)
-        
-        farthest_j = None
-        max_dist_sq = -1
+            if pellet_count == 0: continue
 
-        for j_pos in richest_junctions:
-            dist_sq = (j_pos[0] - avg_ghost_x)**2 + (j_pos[1] - avg_ghost_y)**2
-            if dist_sq > max_dist_sq:
-                max_dist_sq = dist_sq
-                farthest_j = j_pos
+            # Calculate Distance (Manhattan)
+            dist_to_me = abs(j_pos[0] - self.my_pos[0]) + abs(j_pos[1] - self.my_pos[1])
+            
+            # --- MODIFICATION: Score Formula ---
+            score = pellet_count / (dist_to_me + 1) # +1 avoids division by zero
+
+            # Penalize if too close to other ghosts (optional refinement)
+            if other_ghost_pos:
+                for g in other_ghost_pos:
+                    dist_g = abs(j_pos[0] - g[0]) + abs(j_pos[1] - g[1])
+                    if dist_g < 3:
+                        score *= 0.5 # Halve score if another ghost is right there
+
+            if score > best_score:
+                best_score = score
+                best_junction = j_pos
+
+        if best_junction:
+            # Ensure we can actually get there
+            return find_nearest_coord(self.my_pos, {best_junction}, safe_tiles)
         
-        return farthest_j
+        return None
 
 
     def _find_explore_goal(self, safe_tiles: Set[Coord]) -> Optional[Coord]:
         unknown_tiles = set()
         for sx, sy in safe_tiles:
-             for n_pos in get_neighbors((sx,sy)):
+            for n_pos in get_neighbors((sx,sy)):
                 if n_pos not in safe_tiles and not self.query(LearnedWall(Constant(n_pos[0]), Constant(n_pos[1]))):
                     unknown_tiles.add(n_pos)
         
         if unknown_tiles:
-             return find_nearest_coord(self.my_pos, unknown_tiles, safe_tiles)
+            return find_nearest_coord(self.my_pos, unknown_tiles, safe_tiles)
         
         junctions = self.get_junctions()
         if junctions:
