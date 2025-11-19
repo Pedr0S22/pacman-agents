@@ -191,10 +191,24 @@ class Environment:
             self.pacman_pos == self.ghostC_pos:
             
             self.lives -=1
-            # Ghosts return to spawn area
-            self.ghostA_pos = self.ghostA_start_pos
-            self.ghostB_pos = self.ghostB_start_pos
-            self.ghostC_pos = self.ghostC_start_pos
+            
+            # Distance from each corner to Pac-Man's current position
+            corners = [(1, 1), (self.w - 2, 2), (2, self.h - 2), (self.w - 2, self.h - 2)]
+            px, py = self.pacman_pos
+
+            # (corner_coord, distance)
+            scored_corners = []
+            for cx, cy in corners:
+                dist = abs(cx - px) + abs(cy - py)
+                scored_corners.append(((cx, cy), dist))
+            
+            # 3. Sort by distance DES (farthest first)
+            scored_corners.sort(key=lambda x: x[1], reverse=True)
+            
+            # 4. Assign the top 3 farthest corners to the ghosts
+            self.ghostA_pos = scored_corners[0][0]
+            self.ghostB_pos = scored_corners[1][0]
+            self.ghostC_pos = scored_corners[2][0]
 
         # Check if no pellets are left or no lives left
         if len(self.pellets) == 0:
@@ -211,7 +225,6 @@ class Environment:
             'A' - Ghost A
             'B' - Ghost B
             'C' - Ghost C
-            'x' - Ghost Spawn
             '#' - Wall
             '.' - Pellet
             ' ' - Empty space
@@ -234,8 +247,6 @@ class Environment:
                     ch = 'C'
                 elif c in self.walls:
                     ch = '#'
-                elif c in self.ghost_spawns:
-                    ch = 'x'
                 elif c in self.pellets:
                     ch = '.'
                 else:
@@ -265,14 +276,6 @@ def generate_maze(
     """
     # --- Define the Fixed Maze Layout ---
 
-    # Pac-Man's starting position
-    pacman_start = (1, 1)
-    ghostA_start = (23,8)
-    ghostB_start = (23,7)
-    ghostC_start = (22,8)
-
-    start_positions = {pacman_start, ghostA_start, ghostB_start, ghostC_start}
-
     maze_ascii = [
         "#########################", # y=0
         "#           #           #", # y=1
@@ -289,16 +292,28 @@ def generate_maze(
     # --- Process the Maze ---
 
     walls: Set[Coord] = set()
-    free_cells: List[Coord] = [] # Use a list for random.sample
+    free_cells: List[Coord] = []
 
-    # Parse the ASCII maze string array
     for y, row in enumerate(maze_ascii):
         for x, char in enumerate(row):
             c = (x, y)
             if char == '#':
                 walls.add(c)
-            elif c not in start_positions:
+            else:
                 free_cells.append(c)
+
+    # --- Pac-Man and Ghosts positioning ---
+
+    corners = [(1, 1), (w - 2, 1), (1, h - 2), (w - 2, h - 2)]
+    for c in corners:
+        walls.discard(c) # Remove wall if it exists
+        if c not in free_cells:
+            free_cells.append(c)
+
+    pacman_start = (1, 1)
+    ghostA_start = (w - 2, 1)
+    ghostB_start = (1, h - 2)
+    ghostC_start = (w - 2, h - 2)
     
     # Ensure Pac-Man's or Ghost's start is not a wall (as a safety check)
     if pacman_start in walls:
