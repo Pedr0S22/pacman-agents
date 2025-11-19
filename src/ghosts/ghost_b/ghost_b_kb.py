@@ -142,20 +142,23 @@ class KnowledgeBaseB(KnowledgeBase):
                 )
                 new_goal = explore_goal # Can be None if map is fully explored
 
-        # --- 2. Update Goal and Path (Pathfinding Logic) ---
-        
-        # If no goal, we're done
-        if new_goal is None:
-            # Fully explored and no clues, just wait or move randomly
-            return self._get_random_safe_move()
+        # --- MODIFICATION: Prepare Pathfinding Knowledge ---
+        # Combine learned Safe Tiles with Current Percepts (Visible Tiles)
+        # This fixes the flaw where the ghost sees Pac-Man but can't path to him
+        current_safe_percepts = {
+            pos for pos, item in self.percepts.items() 
+            if item != "WALL"
+        }
+        walkable_mesh = self.safe_tiles.union(current_safe_percepts)
 
-        # If goal is new or we have no path, find a new path
+        # --- 2. Update Goal and Path ---
         if new_goal and (new_goal != self.goal or not self.current_path):
             self.goal = new_goal
+            # USE walkable_mesh INSTEAD OF self.safe_tiles
             path = bfs_pathfinder(
                 start_pos=self.my_pos,
                 goal_pos=self.goal,
-                safe_tiles=self.safe_tiles
+                safe_tiles=walkable_mesh
             )
             self.current_path = path if path else []
         
@@ -173,9 +176,9 @@ class KnowledgeBaseB(KnowledgeBase):
                 # We are off-path, recalculate
                 self.current_path = []
                 if self.goal:
-                    path = bfs_pathfinder(self.my_pos, self.goal, self.safe_tiles)
+                    # USE walkable_mesh HERE TOO
+                    path = bfs_pathfinder(self.my_pos, self.goal, walkable_mesh)
                     self.current_path = path if path else []
-                    current_step_index = 0 # We are at the start of the new path
             
             if current_step_index != -1 and current_step_index + 1 < len(self.current_path):
                 next_pos = self.current_path[current_step_index + 1]
