@@ -49,8 +49,7 @@ class Environment:
         """
         return (
             (not self.in_bounds(c)) or
-            (c in self.walls) or
-            (c in self.ghost_spawns)
+            (c in self.walls)
         )
 
     def ghost_blocked(self, c: Coord) -> bool:
