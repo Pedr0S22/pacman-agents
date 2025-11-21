@@ -39,14 +39,14 @@ def get_pressed_key() -> str:
         except ImportError:
             return None
 
-def handle_death_pause(env: Environment, message: str, sleep_s: float):
+def handle_death_pause(env: Environment, sleep_s: float):
     """Handles the visual pause and respawn when Pac-Man dies."""
     # 1. Clear and Render (Show the collision!)
     if os.name == 'nt': os.system('cls')
     print(env.render())
     
     # 2. Print Message
-    print(message)
+    print(f"\nPac-Man Became a Ghost Snack! 👻\nLives Left: {env.lives}")
     print("Get Ready!\n")
     time.sleep(sleep_s * 6) # Pause longer for impact
     
@@ -91,7 +91,7 @@ def run_game(
             
             if env.lives < current_lives:
                 if env.game_over: break
-                handle_death_pause(env, f"\nPac-Man Became a Ghost A Snack! 👻\nLives Left: {env.lives}", sleep_s)
+                handle_death_pause(env, sleep_s)
                 continue
 
             # --- Ghost B ---
@@ -101,7 +101,7 @@ def run_game(
 
             if env.lives < current_lives:
                 if env.game_over: break
-                handle_death_pause(env, f"\nPac-Man Became a Ghost B Snack! 👻\nLives Left: {env.lives}", sleep_s)
+                handle_death_pause(env, sleep_s)
                 continue
 
             # --- Ghost C ---
@@ -111,7 +111,7 @@ def run_game(
 
             if env.lives < current_lives:
                 if env.game_over: break
-                handle_death_pause(env, f"\nPac-Man Became a Ghost C Snack! 👻\nLives Left: {env.lives}", sleep_s)
+                handle_death_pause(env, sleep_s)
                 continue
 
         # Normal Frame Render
