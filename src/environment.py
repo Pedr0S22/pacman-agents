@@ -136,7 +136,7 @@ class Environment:
             victory=self.victory
         )
     
-    def move_ghost(self, ghost_id: str, action: str):
+    def move_ghost(self, ghost_id: str, action: str) -> None:
         """Moves the specified ghost (A, B, or C) one step."""
 
         current_pos = None
@@ -166,7 +166,7 @@ class Environment:
 
         self.check_collision()
 
-    def check_collision(self):
+    def check_collision(self) -> bool:
         """Checks if Pac-Man and any Ghost are on the same tile."""
         if self.pacman_pos == self.ghostA_pos or \
             self.pacman_pos == self.ghostB_pos or \
@@ -179,13 +179,14 @@ class Environment:
             return True # Collision happened
         return False
     
-    def respawn_ghosts(self):
+    def respawn_ghosts(self) -> None:
         """Moves ghosts to the 3 corners farthest from Pac-Man."""
         corners = [(1, 1), (self.w - 2, 1), (1, self.h - 2), (self.w - 2, self.h - 2)]
         px, py = self.pacman_pos
 
         scored_corners = []
         for cx, cy in corners:
+            # Manhathan distance
             dist = abs(cx - px) + abs(cy - py)
             scored_corners.append(((cx, cy), dist))
         
@@ -195,7 +196,7 @@ class Environment:
         self.ghostB_pos = scored_corners[1][0]
         self.ghostC_pos = scored_corners[2][0]
 
-    def step(self, action: str):
+    def step(self, action: str) -> None:
         """Advance the environment one step given an action string.
             Supported actions: 'UP', 'DOWN', 'LEFT', 'RIGHT' to move."""
         if self.victory or self.game_over:
