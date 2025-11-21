@@ -275,7 +275,7 @@ def generate_maze(
     w: int,
     h: int,
     pellet_density: float = 0.5
-) -> Tuple[Set[Coord], Set[Coord], Coord]:
+) -> Tuple[Set[Coord], Set[Coord], Coord, Coord, Coord, Coord]:
     """
     Generate a fixed 25x10 maze and randomly place pellets in free spaces.
 
