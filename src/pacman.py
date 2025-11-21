@@ -41,16 +41,16 @@ def get_pressed_key() -> str:
 
 def handle_death_pause(env: Environment, sleep_s: float):
     """Handles the visual pause and respawn when Pac-Man dies."""
-    # 1. Clear and Render (Show the collision!)
+    # Clear and Render (Show the collision)
     if os.name == 'nt': os.system('cls')
     print(env.render())
     
-    # 2. Print Message
+    # Print Message
     print(f"\nPac-Man Became a Ghost Snack! 👻\nLives Left: {env.lives}")
     print("Get Ready!\n")
     time.sleep(sleep_s * 6) # Pause longer for impact
     
-    # 3. NOW we respawn the ghosts, after the player has seen the collision
+    # Respawn Ghosts
     if not env.game_over:
         env.respawn_ghosts()
 
@@ -76,13 +76,17 @@ def run_game(
         if key is not None: pacman_action = key
         if pacman_action == 'QUIT': break
 
-        # 1. Capture lives
         current_lives = env.lives
         
-        # 2. Pac-Man Step
+        # Pac-Man Step
         env.step(pacman_action)
 
-        # 3. Ghosts' Turn
+        if env.lives < current_lives:
+            if env.game_over: break
+            handle_death_pause(env, sleep_s)
+            continue
+
+        # Ghost's Step
         if not env.game_over:
             # --- Ghost A ---
             pac_A, others_A, percepts_A = env.get_ghost_percepts('A')
@@ -124,13 +128,6 @@ def run_game(
     if os.name == 'nt': os.system('cls')
     print(env.render())
     print()
-
-    # --- 4. FINAL GAME OVER / VICTORY SCREEN ---
-    # This runs after the loop breaks
-    if os.name == 'nt': os.system('cls')
-    print(env.render()) # This prints the grid + "GAME OVER!" (from env logic)
-    print()
-
 
 def run_pacman():
     """Game entry point: create a maze, instantiate the environment, run the game."""
