@@ -39,6 +39,20 @@ def get_pressed_key() -> str:
         except ImportError:
             return None
 
+def handle_death_pause(env: Environment, message: str, sleep_s: float):
+    """Handles the visual pause and respawn when Pac-Man dies."""
+    # 1. Clear and Render (Show the collision!)
+    if os.name == 'nt': os.system('cls')
+    print(env.render())
+    
+    # 2. Print Message
+    print(message)
+    print("Get Ready!\n")
+    time.sleep(sleep_s * 6) # Pause longer for impact
+    
+    # 3. NOW we respawn the ghosts, after the player has seen the collision
+    if not env.game_over:
+        env.respawn_ghosts()
 
 def run_game(
     env: Environment,
@@ -50,44 +64,72 @@ def run_game(
     """Run the Pac-Man game with keyboard controls."""
     pacman_action = "WAIT"
 
+    # Initial Render
+    if os.name == 'nt': os.system('cls')
+    print(env.render())
+    print()
+    time.sleep(sleep_s)
+
     while not env.victory and not env.game_over:
 
         key = get_pressed_key()
-        if key is not None:
-            pacman_action = key
+        if key is not None: pacman_action = key
+        if pacman_action == 'QUIT': break
 
-        if pacman_action == 'QUIT':
-            break
-
+        # 1. Capture lives
+        current_lives = env.lives
+        
+        # 2. Pac-Man Step
         env.step(pacman_action)
 
-        # --- 4. Ghosts' Turn ---
-        
-        # --- Ghost A ---
-        pac_A, others_A, percepts_A = env.get_ghost_percepts('A')
-        move_A = ghost_a.get_next_move(
-            env.ghostA_pos, pac_A, others_A, percepts_A
-        )
-        env.move_ghost('A', move_A)
+        # 3. Ghosts' Turn
+        if not env.game_over:
+            # --- Ghost A ---
+            pac_A, others_A, percepts_A = env.get_ghost_percepts('A')
+            move_A = ghost_a.get_next_move(env.ghostA_pos, pac_A, others_A, percepts_A)
+            env.move_ghost('A', move_A)
+            
+            if env.lives < current_lives:
+                if env.game_over: break
+                handle_death_pause(env, f"\nPac-Man Became a Ghost A Snack! 👻\nLives Left: {env.lives}", sleep_s)
+                continue
 
-        # --- Ghost B ---
-        pac_B, others_B, percepts_B = env.get_ghost_percepts('B')
-        move_B = ghost_b.get_next_move(
-            env.ghostB_pos, pac_B, others_B, percepts_B
-        )
-        env.move_ghost('B', move_B)
-        
-        # --- Ghost C ---
-        pac_C, others_C, percepts_C = env.get_ghost_percepts('C')
-        move_C = ghost_c.get_next_move(
-            env.ghostC_pos, pac_C, others_C, percepts_C
-        )
-        env.move_ghost('C', move_C)
+            # --- Ghost B ---
+            pac_B, others_B, percepts_B = env.get_ghost_percepts('B')
+            move_B = ghost_b.get_next_move(env.ghostB_pos, pac_B, others_B, percepts_B)
+            env.move_ghost('B', move_B)
 
-        if os.name == 'nt': os.system('cls') # Clear screen (Windows)
+            if env.lives < current_lives:
+                if env.game_over: break
+                handle_death_pause(env, f"\nPac-Man Became a Ghost B Snack! 👻\nLives Left: {env.lives}", sleep_s)
+                continue
+
+            # --- Ghost C ---
+            pac_C, others_C, percepts_C = env.get_ghost_percepts('C')
+            move_C = ghost_c.get_next_move(env.ghostC_pos, pac_C, others_C, percepts_C)
+            env.move_ghost('C', move_C)
+
+            if env.lives < current_lives:
+                if env.game_over: break
+                handle_death_pause(env, f"\nPac-Man Became a Ghost C Snack! 👻\nLives Left: {env.lives}", sleep_s)
+                continue
+
+        # Normal Frame Render
+        if os.name == 'nt': os.system('cls')
         print(env.render())
         print()
         time.sleep(sleep_s)
+
+    # Final Game Over Screen
+    if os.name == 'nt': os.system('cls')
+    print(env.render())
+    print()
+
+    # --- 4. FINAL GAME OVER / VICTORY SCREEN ---
+    # This runs after the loop breaks
+    if os.name == 'nt': os.system('cls')
+    print(env.render()) # This prints the grid + "GAME OVER!" (from env logic)
+    print()
 
 
 def run_pacman():
@@ -115,7 +157,6 @@ def run_pacman():
 
     # --- Run the Game ---
     run_game(env, ghost_a, ghost_b, ghost_c)
-
 
 if __name__ == "__main__":
     run_pacman()

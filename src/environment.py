@@ -1,6 +1,7 @@
 from typing import Tuple, Set, Dict, List, Optional
 from utils.types_utils import Coord
 import random
+import time
 
 class Environment:
     """Grid representing the game environment."""
@@ -10,10 +11,10 @@ class Environment:
         h: int,
         walls: Set[Coord] = None,
         pellets: Set[Coord] = None,
-        pacman_start: Coord = (1, 1),
-        ghostA_start: Coord = (23,8),
-        ghostB_start: Coord = (23,7),
-        ghostC_start: Coord = (22,8)
+        pacman_start: Coord = None,
+        ghostA_start: Coord = None,
+        ghostB_start: Coord = None,
+        ghostC_start: Coord = None
 
     ):
         self.w, self.h = w, h
@@ -163,6 +164,37 @@ class Environment:
                 elif ghost_id == 'C':
                     self.ghostC_pos = (nx, ny)
 
+        self.check_collision()
+
+    def check_collision(self):
+        """Checks if Pac-Man and any Ghost are on the same tile."""
+        if self.pacman_pos == self.ghostA_pos or \
+            self.pacman_pos == self.ghostB_pos or \
+            self.pacman_pos == self.ghostC_pos:
+            
+            self.lives -= 1
+
+            if self.lives == -1:
+                self.game_over = True
+            return True # Collision happened
+        return False
+    
+    def respawn_ghosts(self):
+        """Moves ghosts to the 3 corners farthest from Pac-Man."""
+        corners = [(1, 1), (self.w - 2, 1), (1, self.h - 2), (self.w - 2, self.h - 2)]
+        px, py = self.pacman_pos
+
+        scored_corners = []
+        for cx, cy in corners:
+            dist = abs(cx - px) + abs(cy - py)
+            scored_corners.append(((cx, cy), dist))
+        
+        scored_corners.sort(key=lambda x: x[1], reverse=True)
+        
+        self.ghostA_pos = scored_corners[0][0]
+        self.ghostB_pos = scored_corners[1][0]
+        self.ghostC_pos = scored_corners[2][0]
+
     def step(self, action: str):
         """Advance the environment one step given an action string.
             Supported actions: 'UP', 'DOWN', 'LEFT', 'RIGHT' to move."""
@@ -184,30 +216,8 @@ class Environment:
             self.pellets.remove(self.pacman_pos)
             self.score +=10
 
-        # Pac-Man is the same position as Ghosts
-        if self.pacman_pos == self.ghostA_pos or \
-            self.pacman_pos == self.ghostB_pos or \
-            self.pacman_pos == self.ghostC_pos:
-            
-            self.lives -=1
-            
-            # Distance from each corner to Pac-Man's current position
-            corners = [(1, 1), (self.w - 2, 2), (2, self.h - 2), (self.w - 2, self.h - 2)]
-            px, py = self.pacman_pos
-
-            # (corner_coord, distance)
-            scored_corners = []
-            for cx, cy in corners:
-                dist = abs(cx - px) + abs(cy - py)
-                scored_corners.append(((cx, cy), dist))
-            
-            # 3. Sort by distance DES (farthest first)
-            scored_corners.sort(key=lambda x: x[1], reverse=True)
-            
-            # 4. Assign the top 3 farthest corners to the ghosts
-            self.ghostA_pos = scored_corners[0][0]
-            self.ghostB_pos = scored_corners[1][0]
-            self.ghostC_pos = scored_corners[2][0]
+        # Check Collision (Ghost kill Pac-Man)
+        self.check_collision()
 
         # Check if no pellets are left or no lives left
         if len(self.pellets) == 0:
@@ -236,14 +246,14 @@ class Environment:
             row = []
             for x in range(self.w):
                 c = (x, y)
-                if c == self.pacman_pos:
-                    ch = 'P'
-                elif c == self.ghostA_pos:
+                if c == self.ghostA_pos:
                     ch = 'A'
                 elif c == self.ghostB_pos:
                     ch = 'B'
                 elif c == self.ghostC_pos:
                     ch = 'C'
+                elif c == self.pacman_pos:
+                    ch = 'P'
                 elif c in self.walls:
                     ch = '#'
                 elif c in self.pellets:
@@ -328,10 +338,15 @@ def generate_maze(
         walls.discard(ghostC_start)
 
     # --- Generate Pellets ---
+
+    reserved_spots = {pacman_start, ghostA_start, ghostB_start, ghostC_start}
+    possible_pellet_cells = [c for c in free_cells if c not in reserved_spots]
     
     # Place pellets randomly in the available free cells
     rng = random.Random()
-    k_pellets = max(1, int(pellet_density * len(free_cells)))
-    pellets = set(rng.sample(free_cells, k_pellets)) if k_pellets > 0 else set()
+    k_pellets = max(1, int(pellet_density * len(possible_pellet_cells)))
+    
+    # Use possible_pellet_cells instead of free_cells
+    pellets = set(rng.sample(possible_pellet_cells, k_pellets)) if k_pellets > 0 else set()
 
     return walls, pellets, pacman_start, ghostA_start, ghostB_start, ghostC_start

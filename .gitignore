@@ -1,3 +1,6 @@
 # Ignore Python bytecode compiled files and cache folders
 __pycache__/
 *.py[cod]
+
+# Vs Code
+.vscode
