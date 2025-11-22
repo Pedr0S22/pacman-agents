@@ -10,18 +10,24 @@ def get_neighbors(pos: Coord) -> List[Coord]:
 def bfs_pathfinder(
     start_pos: Coord,
     goal_pos: Coord,
-    # The set of tiles the agent knows are safe to traverse.
-    # This is crucial for agents B and C who must learn the map.
     safe_tiles: Set[Coord]
 ) -> Optional[List[Coord]]:
     """
-    Finds the shortest path from start to goal using Breadth-First Search (BFS).
-    Only searches tiles within the provided 'safe_tiles' set.
+    Finds the shortest path from start to goal using BFS.
+    Only searches tiles within 'safe_tiles'.
     """
     if start_pos == goal_pos:
         return [start_pos]
+    
+    # ✅ FIX: Check if goal is even reachable (in safe_tiles)
+    if goal_pos not in safe_tiles:
+        return None  # Goal is not safe/reachable
+    
+    # ✅ FIX: Also ensure start_pos is in safe_tiles
+    if start_pos not in safe_tiles:
+        return None
 
-    queue = deque([(start_pos, [start_pos])])  # (position, path_list)
+    queue = deque([(start_pos, [start_pos])])
     visited = {start_pos}
 
     while queue:
@@ -35,7 +41,7 @@ def bfs_pathfinder(
                 visited.add(neighbor)
                 queue.append((neighbor, path + [neighbor]))
     
-    return None # No path found
+    return None  # No path foundd
 
 def get_move_from_path(
     current_pos: Coord,

@@ -121,9 +121,8 @@ class Environment:
                 
                 # If nothing else, it's an empty, traversable tile
                 else:
-                    # We only add empty tiles if they are not the ghost spawn
-                    if pos not in self.ghost_spawns:
-                        percept_map[pos] = "EMPTY"
+                    # add empty tiles
+                    percept_map[pos] = "EMPTY"
 
         return pacman_pos_seen, other_ghosts_seen, percept_map
 
@@ -191,10 +190,12 @@ class Environment:
             scored_corners.append(((cx, cy), dist))
         
         scored_corners.sort(key=lambda x: x[1], reverse=True)
+        top_three_positions = [corner[0] for corner in scored_corners[:3]]
+        random.shuffle(top_three_positions)
         
-        self.ghostA_pos = scored_corners[0][0]
-        self.ghostB_pos = scored_corners[1][0]
-        self.ghostC_pos = scored_corners[2][0]
+        self.ghostA_pos = top_three_positions[0]
+        self.ghostB_pos = top_three_positions[1]
+        self.ghostC_pos = top_three_positions[2]
 
     def step(self, action: str) -> None:
         """Advance the environment one step given an action string.
@@ -289,12 +290,12 @@ def generate_maze(
     maze_ascii = [
         "#########################", # y=0
         "#           #           #", # y=1
-        "# ######### # ######### #", # y=2
+        "# #########   ######### #", # y=2
         "# #       # # #       # #", # y=3
         "# # #####   #   ##### # #", # y=4
-        "# #       #   #       # #", # y=5
-        "#   ## ####   #### ##   #", # y=6
-        "#   #       #       #   #", # y=7
+        "# #       #####       # #", # y=5
+        "#   ## ##       ## ##   #", # y=6
+        "#   #      ###      #   #", # y=7
         "#     #############     #", # y=8
         "#########################"  # y=9
     ]
@@ -322,8 +323,8 @@ def generate_maze(
 
     pacman_start = (1, 1)
     ghostA_start = (w - 2, 1)
-    ghostB_start = (1, h - 2)
-    ghostC_start = (w - 2, h - 2)
+    ghostB_start = (w - 2, h - 2)
+    ghostC_start = (1, h - 2)
     
     # Ensure Pac-Man's or Ghost's start is not a wall (as a safety check)
     if pacman_start in walls:

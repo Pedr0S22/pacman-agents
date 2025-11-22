@@ -1,240 +1,315 @@
-from typing import Tuple, Set, List, Optional
+from typing import Set, List, Optional, Dict, Tuple, Deque
+from collections import deque
 from utils.types_utils import Coord, Percept, MOVES
-from utils.path_utils import *
+from utils.path_utils import bfs_pathfinder, get_move_from_path, get_neighbors, find_nearest_coord
 from ghosts.KB import KnowledgeBase
 import random
 
 class KnowledgeBaseB(KnowledgeBase):
     """
-    KB for Ghost B.
-    This is a "smart" PL KB. It learns the map, maintains beliefs, and contains all
-    inference and pathfinding logic.
+    KB for Ghost B (The Analyst).
+    Logic: Optimistic Model-Based Agent.
+    FIX: Uses a 'Planning Mesh' (Safe + Unknown) to allow the pathfinder 
+    to route through the fog of war.
+    Now tracks the last 8 visited junctions to avoid repetitive patrolling.
     """
     def __init__(self):
-        # --- The Learned Map ---
+        # --- World Model ---
         self.walls: Set[Coord] = set()
         self.safe_tiles: Set[Coord] = set()
-        self.seen_pellets: Set[Coord] = set()
+        self.unknown_tiles: Set[Coord] = set()
         self.junctions: Set[Coord] = set()
-        self.unknown_tiles: Set[Coord] = set() # For exploration
+        self.believed_pellets: Set[Coord] = set()
+
+        self.initialized = False
         
         # --- Beliefs ---
-        self.pacman_clue: Optional[Coord] = None
-        self.clue_age: int = 0
-        self.max_clue_age: int = 20 # Give up on a clue after 20 steps
+        self.my_pos: Optional[Coord] = None
+        self.pacman_visible: bool = False
+        self.pacman_last_pos: Optional[Coord] = None
+        self.percepts: Percept = {} 
         
-        # --- Stored Percepts  ---
-        self.my_pos: Coord = (0, 0)
-        self.pacman_pos_percept: Optional[Coord] = None
-        self.percepts: Percept = {}
-        
-        # --- Pathfinding State ---
+        # --- Memory & Plan ---
+        self.clues: List[Tuple[Coord, int]] = [] 
         self.goal: Optional[Coord] = None
         self.current_path: List[Coord] = []
         
-        # Add a starting tile to explore from
-        self.unknown_tiles.add((0,0))
-
-
-    def tell(
-        self,
-        my_pos: Coord,
-        pacman_pos: Optional[Coord],
-        other_ghost_pos: List[Tuple[str, Coord]], # <-- Added this
-        percepts: Percept
-    ):
-        """
-        Stores all new facts and updates the KB's internal map
-        and belief state.
-        """
-        # (Ghost B ignores other_ghost_pos, but it must accept the arg)
+        # Junction Memory (Last 8 visited)
+        # "CREATE A DATA STRUCTURE THAT SAVES LAST 12 JUNCTIONS"
+        self.visited_junctions: Deque[Coord] = deque(maxlen=12)
         
-        # --- 1. Store Current Facts ---
+        # --- Camping Logic ---
+        self.is_loitering: bool = False
+        self.loiter_timer: int = 0
+        self.loiter_anchor: Optional[Coord] = None
+        self.MAX_LOITER_TIME: int = 4 
+
+    def tell(self, my_pos: Coord, pacman_pos: Optional[Coord], other_ghost_pos: List[Tuple[str, Coord]], percepts: Percept):
         self.my_pos = my_pos
-        self.pacman_pos_percept = pacman_pos
-        self.percepts = percepts
+        self.percepts = percepts 
         
-        # ... (rest of tell method is unchanged) ...
-        if my_pos not in self.safe_tiles:
-            self._add_safe_tile(my_pos)
+        # FIRST TURN FIX — Pre-seed map knowledge BEFORE any decision logic runs
+        if not self.initialized:
+            self._mark_safe(my_pos)     # Mark current tile safe
+            for n in get_neighbors(my_pos):  # Pre-seed unknown frontier
+                if n not in self.walls:
+                    self.unknown_tiles.add(n)
+            self.initialized = True
+        else:
+            # Normal marking on subsequent turns
+            self._mark_safe(my_pos)
 
-        # --- 2. Learn from Percepts (Update Map) ---
-        new_clue = None
+        new_clue_pos = None
         for pos, item in percepts.items():
             if item == "WALL":
                 self.walls.add(pos)
                 self.safe_tiles.discard(pos)
-                self.unknown_tiles.discard(pos)
-            
-            elif item == "PELLET":
-                self._add_safe_tile(pos)
-                self.seen_pellets.add(pos) # Add to "memory"
-            
-            elif item == "EMPTY":
-                self._add_safe_tile(pos)
-                # --- The "Aha!" Moment (Belief Maintenance) ---
-                if pos in self.seen_pellets:
-                    new_clue = pos # Found a clue! Pac-Man was here.
-            
-            else: # Pac-Man, Other Ghosts
-                self._add_safe_tile(pos)
-        
-        # --- 3. Update Beliefs (Clues) ---
+                self.unknown_tiles.discard(pos) # Wall is no longer unknown
+                self.junctions.discard(pos)
+            else:
+                self._mark_safe(pos) # Visible tiles are safe
+                if item == "PELLET":
+                    self.believed_pellets.add(pos)
+                elif item == "EMPTY":
+                    if pos in self.believed_pellets:
+                        new_clue_pos = pos
+                        self.believed_pellets.discard(pos)
+
+        # 2. Update Clues
+        alive_clues = []
+        for c_pos, c_age in self.clues:
+            if c_pos == self.my_pos: continue 
+            if self.pacman_visible: continue
+            if c_age < 25: alive_clues.append((c_pos, c_age + 1))
+        self.clues = alive_clues
+
+        # 3. Update Pacman Interaction
         if pacman_pos:
-            # Direct sight invalidates any old clue
-            self.pacman_clue = None
-            self.clue_age = 0
-        elif new_clue:
-            # We found a new clue
-            self.pacman_clue = new_clue
-            self.clue_age = 0
-        elif self.pacman_clue:
-            # Age the current clue
-            self.clue_age += 1
-            if self.clue_age > self.max_clue_age:
-                self.pacman_clue = None # Clue is stale
-                self.clue_age = 0
+            self.pacman_visible = True
+            self.pacman_last_pos = pacman_pos
+            self.clues = [] 
+            self.is_loitering = False
+            self.goal = None # Reset goal to chase immediately
+        else:
+            self.pacman_visible = False
+            if new_clue_pos:
+                self.clues.insert(0, (new_clue_pos, 0))
+                if len(self.clues) > 2: self.clues.pop()
 
     def ask(self) -> str:
-        """
-        Runs inference on the current KB, determines a goal,
-        finds a path, and returns a single, safe action.
-        """
-        
-        # --- 1. Run Inference Rules (Determine Goal) ---
-        new_goal = None
-        
-        # Rule 1: Chase (Highest Priority)
-        if self.pacman_pos_percept:
-            new_goal = self.pacman_pos_percept
-        
-        # Rule 2: Ambush (If no sight, but have a clue)
-        else:
-            if self.pacman_clue:
-                # Find nearest junction TO THE CLUE
-                ambush_spot = find_nearest_coord(
-                    start_pos=self.pacman_clue,
-                    target_coords=self.junctions,
-                    safe_tiles=self.safe_tiles
-                )
-                if ambush_spot:
-                    new_goal = ambush_spot
-                else:
-                    # No junctions found, just go to the clue
-                    new_goal = self.pacman_clue
-        
-        # Rule 3: Patrol/Explore (No sight, no clue)
-        if new_goal is None:
-            # Try to patrol (camp at a junction)
-            patrol_goal = find_nearest_coord(
-                start_pos=self.my_pos,
-                target_coords=self.junctions,
-                safe_tiles=self.safe_tiles
-            )
-            if patrol_goal:
-                new_goal = patrol_goal
-            else:
-                # No junctions found, explore unknown tiles
-                explore_goal = find_nearest_coord(
-                    start_pos=self.my_pos,
-                    target_coords=self.unknown_tiles,
-                    safe_tiles=self.safe_tiles
-                )
-                new_goal = explore_goal # Can be None if map is fully explored
+        if self.my_pos is None: return 'WAIT'
 
-        # --- MODIFICATION: Prepare Pathfinding Knowledge ---
-        # Combine learned Safe Tiles with Current Percepts (Visible Tiles)
-        # This fixes the flaw where the ghost sees Pac-Man but can't path to him
-        current_safe_percepts = {
-            pos for pos, item in self.percepts.items() 
-            if item != "WALL"
-        }
-        walkable_mesh = self.safe_tiles.union(current_safe_percepts)
+        # --- CRITICAL FIX: THE PLANNING MESH ---
+        # We combine Safe + Unknown. We treat "Unknown" as "Walkable until proven otherwise".
+        # This allows BFS to find paths through the fog.
+        planning_mesh = self.safe_tiles.union(self.unknown_tiles)
+        # Ensure my current position is strictly in the mesh to avoid start-node errors
+        planning_mesh.add(self.my_pos)
 
-        # --- 2. Update Goal and Path ---
-        if new_goal and (new_goal != self.goal or not self.current_path):
-            self.goal = new_goal
-            # USE walkable_mesh INSTEAD OF self.safe_tiles
-            path = bfs_pathfinder(
-                start_pos=self.my_pos,
-                goal_pos=self.goal,
-                safe_tiles=walkable_mesh
-            )
-            self.current_path = path if path else []
-        
-        # If we reached our goal, clear path
-        if self.my_pos == self.goal:
+        # === DEBUG: PRINT MESH + GOAL ===
+        #print("---- GHOST B DEBUG ----")
+        #print("Pos:", self.my_pos)
+        #print("Safe:", len(self.safe_tiles))
+        #print("Junctions:", len(self.junctions))
+        #print("Visited Q:", list(self.visited_junctions))
+        #print("Goal:", self.goal)
+        #print("-------------------------")
+
+        # Defensive: if our current goal turned out to be a wall, drop it now.
+        if self.goal is not None and self.goal in self.walls:
+            #print(f"[GHOST B] Dropping goal {self.goal} because it is now a known wall.")
+            self.goal = None
             self.current_path = []
-            
-        # --- 3. Get Move from Path ---
-        if self.current_path:
-            # Handle path consumption
-            current_step_index = -1
-            try:
-                current_step_index = self.current_path.index(self.my_pos)
-            except ValueError:
-                # We are off-path, recalculate
+
+        # 1. LOITERING
+        if self.is_loitering:
+            self.loiter_timer -= 1
+            if self.loiter_timer <= 0 or self.pacman_visible:
+                self.is_loitering = False
+                self.goal = None 
                 self.current_path = []
-                if self.goal:
-                    # USE walkable_mesh HERE TOO
-                    path = bfs_pathfinder(self.my_pos, self.goal, walkable_mesh)
-                    self.current_path = path if path else []
+            else:
+                return self._execute_loiter_step(planning_mesh)
+
+        # 2. ARRIVAL & CAMPING
+        if self.goal and self.my_pos == self.goal:
+            #print(f"[GHOST B] Reached goal {self.goal}.")
             
-            if current_step_index != -1 and current_step_index + 1 < len(self.current_path):
-                next_pos = self.current_path[current_step_index + 1]
-                return get_move_from_path(self.my_pos, [self.my_pos, next_pos])
+            if self.my_pos in self.junctions:
+                # --- UPDATE QUEUE ---
+                # Record visit to this junction
+                if self.my_pos not in self.visited_junctions:
+                    self.visited_junctions.append(self.my_pos)
+                elif self.visited_junctions[-1] != self.my_pos:
+                    # If it's in the list but not the most recent, bump it to the end
+                    self.visited_junctions.remove(self.my_pos)
+                    self.visited_junctions.append(self.my_pos)
 
-        return self._get_random_safe_move()
+                # Start Loitering
+                self.is_loitering = True
+                self.loiter_timer = self.MAX_LOITER_TIME
+                self.loiter_anchor = self.my_pos
+                
+                # Clear goal/path BUT return WAIT to hold position
+                self.goal = None 
+                self.current_path = []
+                return 'WAIT'
+            else:
+                # Reached non-junction goal (e.g. clue) -> just clear and continue
+                self.goal = None 
+                self.current_path = []
 
-    # --- Internal KB Helper Functions ---
+        # 3. GOAL SELECTION
+        if self.goal is None:
+            self.goal = self._select_new_goal(planning_mesh)
+            self.current_path = [] # New goal requires new path
 
-    def _add_safe_tile(self, pos: Coord):
-        """Adds a tile as safe and updates unknown/junction status."""
-        if pos in self.safe_tiles:
-            return # Already processed
+        # 4. PATHFINDING
+        if self.goal:
+            # If we lack a path or have drifted off it
+            needs_path = not self.current_path
+            if self.current_path:
+                # Robustness: If next step isn't a neighbor, the path is broken
+                if self.current_path[0] not in get_neighbors(self.my_pos) and self.current_path[0] != self.my_pos:
+                    needs_path = True
             
+            if needs_path:
+                # Pass the OPTIMISTIC planning mesh to BFS
+                path = bfs_pathfinder(self.my_pos, self.goal, planning_mesh)
+                if path:
+                    self.current_path = path
+                    # BFS often returns [start, next, ..., goal]. Remove start if present.
+                    if self.current_path and self.current_path[0] == self.my_pos:
+                        self.current_path.pop(0)
+                else:
+                    self.goal = None # Goal unreachable even optimistically
+
+        # 5. EXECUTION
+        if self.current_path:
+            next_step = self.current_path[0]
+            
+            # Double check: Is the next step actually a wall we just discovered?
+            if next_step in self.walls:
+                self.current_path = [] # Path blocked, replan next tick
+                return 'WAIT'
+                
+            # Optimization: Pop the step so we don't loop
+            if next_step == self.my_pos:
+                self.current_path.pop(0)
+                if self.current_path:
+                    next_step = self.current_path[0]
+                else:
+                    return 'WAIT'
+
+            return get_move_from_path(self.my_pos, [self.my_pos, next_step])
+
+        # 6. FALLBACK
+        return self._get_random_optimistic_move()
+
+    # --- Helpers ---
+
+    def _execute_loiter_step(self, mesh: Set[Coord]) -> str:
+        if self.my_pos == self.loiter_anchor:
+            neighbors = [n for n in get_neighbors(self.loiter_anchor) if n in mesh]
+            if neighbors:
+                step_out = random.choice(neighbors)
+                return get_move_from_path(self.my_pos, [self.my_pos, step_out])
+            return 'WAIT'
+        return get_move_from_path(self.my_pos, [self.my_pos, self.loiter_anchor])
+
+    def _select_new_goal(self, mesh: Set[Coord]) -> Optional[Coord]:
+        """
+        Selects a new goal for the ghost, prioritizing:
+        1. Chase visible Pacman
+        2. Follow clues
+        3. Patrol far junctions (avoiding visited ones)
+        4. Explore unknown frontier
+        5. Patrol any nearby junction
+        """
+
+        # 1. CHASE
+        if self.pacman_visible:
+            return self.pacman_last_pos
+
+        # 2. CLUES
+        if self.clues:
+            return self._select_best_clue()
+
+        # helper
+        def is_valid(c: Coord) -> bool:
+            return c not in self.walls and c in mesh and c != self.my_pos
+
+        # debug helper
+        def inspect(name, coords):
+            coords_list = list(coords)
+            #print(f"[GHOST B] Inspect {name}: total={len(coords_list)} sample={coords_list[:10]}")
+
+        inspect("unknown_tiles", self.unknown_tiles)
+        
+        # Create exclusion set from visited queue
+        excluded = {self.my_pos}
+        excluded.update(self.visited_junctions)
+
+        # 3. FAR JUNCTIONS
+        # Filter out junctions that are in the 'excluded' (recently visited) set
+        far_juncs = [
+            j for j in self.junctions
+            if j not in excluded and (abs(j[0]-self.my_pos[0]) + abs(j[1]-self.my_pos[1])) > 5 and is_valid(j)
+        ]
+        if far_juncs:
+            #print("[GHOST B] Choosing far junctions:", far_juncs[:5])
+            return find_nearest_coord(self.my_pos, set(far_juncs), mesh)
+
+        # 4. UNKNOWN FRONTIER
+        unknowns = [u for u in self.unknown_tiles if is_valid(u)]
+        if unknowns:
+            #print("[GHOST B] Choosing unknown frontier sample:", unknowns[:5])
+            return find_nearest_coord(self.my_pos, set(unknowns), mesh)
+
+        # 5. ANY JUNCTION (Fallback if we are stuck locally or have visited everywhere)
+        nearby_juncs = [j for j in self.junctions if j != self.my_pos and is_valid(j)]
+        if nearby_juncs:
+            #print("[GHOST B] Choosing nearby junctions (fallback):", nearby_juncs[:5])
+            return find_nearest_coord(self.my_pos, set(nearby_juncs), mesh)
+
+        return None
+
+    def _select_best_clue(self) -> Optional[Coord]:
+        best, min_score = None, 9999
+        for c_pos, c_age in self.clues:
+            score = (abs(c_pos[0] - self.my_pos[0]) + abs(c_pos[1] - self.my_pos[1])) + (c_age * 2)
+            if score < min_score: min_score, best = score, c_pos
+        return best
+
+    def _mark_safe(self, pos: Coord):
+        if pos in self.safe_tiles: return
         self.safe_tiles.add(pos)
-        self.unknown_tiles.discard(pos)
-        self.walls.discard(pos) # In case it was inferred wrong
+        self.walls.discard(pos)
+        self.unknown_tiles.discard(pos) # IMPORTANT: Remove from unknown once visited
         
-        # Add neighbors to 'unknown'
-        for neighbor in get_neighbors(pos):
-            if neighbor not in self.safe_tiles and neighbor not in self.walls:
-                self.unknown_tiles.add(neighbor)
-
-        # Check for junction
-        self._check_for_junction(pos)
-        # Re-check neighbors too, as this tile might complete them
-        for neighbor in get_neighbors(pos):
-            if neighbor in self.safe_tiles:
-                self._check_for_junction(neighbor)
-
-    def _check_for_junction(self, pos: Coord):
-        """Infers if a tile is a junction (3+ safe, non-wall neighbors)."""
-        if pos not in self.safe_tiles:
-            return
-
-        safe_neighbors = 0
-        for neighbor in get_neighbors(pos):
-            # A neighbor is "safe" if it's in our safe_tiles set
-            # OR if it's in our current percepts and not a wall
-            if neighbor in self.safe_tiles:
-                safe_neighbors += 1
-            elif neighbor in self.percepts and self.percepts[neighbor] != "WALL":
-                safe_neighbors += 1
+        # Add neighbors to unknown if they are fresh
+        for n in get_neighbors(pos):
+            if n not in self.safe_tiles and n not in self.walls:
+                self.unknown_tiles.add(n)
         
-        if safe_neighbors >= 3:
-            self.junctions.add(pos)
-    
-    def _get_random_safe_move(self) -> str:
-        """Failsafe for when pathfinding fails or no goal exists."""
-        possible_moves = []
+        self._infer_junction(pos)
+        for n in get_neighbors(pos): 
+            if n in self.safe_tiles: self._infer_junction(n)
+
+    def _infer_junction(self, pos: Coord):
+        if pos in self.walls: return
+        count = 0
+        for n in get_neighbors(pos):
+            if n not in self.walls: count += 1 # Optimistic inference
+        if count >= 3: self.junctions.add(pos)
+
+    def _get_random_optimistic_move(self) -> str:
+        possible = []
         for move, (dx, dy) in MOVES.items():
             if move == 'WAIT': continue
-            check_pos = (self.my_pos[0] + dx, self.my_pos[1] + dy)
-            if check_pos in self.safe_tiles and check_pos not in self.walls:
-                possible_moves.append(move)
-        
-        if possible_moves:
-            return random.choice(possible_moves)
-        return 'WAIT'
+            nx, ny = self.my_pos[0]+dx, self.my_pos[1]+dy
+            # Move is valid if it is NOT a known wall
+            if (nx, ny) not in self.walls and (nx, ny) in self.safe_tiles.union(self.unknown_tiles):
+                possible.append(move)
+
+        return random.choice(possible) if possible else 'WAIT'

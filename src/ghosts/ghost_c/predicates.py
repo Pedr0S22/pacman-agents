@@ -1,4 +1,4 @@
-from utils.fol_components import Term, Predicate, LocationBasedPredicate
+from utils.fol_components import Term, Predicate, Constant, LocationBasedPredicate
 
 # Map Topology Predicates
 
@@ -10,35 +10,48 @@ class LearnedSafe(LocationBasedPredicate):
     """Fact: LearnedSafe(x, y)"""
     pass
 
-class SawPelletAt(LocationBasedPredicate):
-    """Fact: SawPelletAt(x, y) - The initial state"""
-    pass
-
-class IsJunction(LocationBasedPredicate):
-    """Fact: IsJunction(x, y) - Inferred from map"""
-    pass
-
-class IsTunnel(LocationBasedPredicate):
-    """Fact: IsTunnel(x, y) - Inferred from map"""
-    pass
-
-
-class PelletCountNear(Predicate):
-    """Belief: PelletCountNear(Jx, Jy, N)
-    "I believe the junction at (Jx, Jy) is a gateway to N pellets."
-    """
-    def __init__(self, jx: Term, jy: Term, count: Term):
-        super().__init__(jx, jy, count)
-        self.jx = jx
-        self.jy = jy
-        self.count = count
-
-
-# --- Dynamic Belief Predicates ---
-
 class PacmanPos(LocationBasedPredicate):
     """Belief: PacmanPos(x, y)"""
     pass
+
+
+# Dynamic Belief Predicates
+
+class VisitedAtTime(Predicate):
+    """Fact: VisitedAtTime(x, y, t) - History tracking"""
+    def __init__(self, x: Term, y: Term, t: Term):
+        super().__init__(x, y, t)
+        self.x = x
+        self.y = y
+        self.t = t
+
+class EscapeState(Predicate):
+    """
+    Fact: EscapeState(TargetX, TargetY, StartTime)
+    Persists the commitment to run to a specific target to break a loop.
+    """
+    def __init__(self, tx: Term, ty: Term, start_time: Term):
+        super().__init__(tx, ty, start_time)
+        self.tx = tx
+        self.ty = ty
+        self.start_time = start_time
+
+
+class LastPos(Predicate):
+    """Stores the last position of a ghost to avoid bouncing."""
+    def __init__(self, ghost_id: Constant, x: Constant, y: Constant):
+        super().__init__("LastPos", ghost_id, x, y)
+
+
+class UnreachableGoal(Predicate):
+    """Fact: UnreachableGoal(x,y,timestamp)
+    Goals become reachable again after time passes."""
+    def __init__(self, x: Term, y: Term, timestamp: Term):
+        super().__init__(x, y, timestamp)
+        self.x = x
+        self.y = y
+        self.timestamp = timestamp
+
 
 class PacmanVector(Predicate):
     """Belief: PacmanVector(dx, dy)"""

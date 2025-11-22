@@ -65,7 +65,7 @@ def run_game(
     pacman_action = "WAIT"
 
     # Initial Render
-    if os.name == 'nt': os.system('cls')
+    #if os.name == 'nt': os.system('cls')
     print(env.render())
     print()
     time.sleep(sleep_s)
@@ -119,13 +119,13 @@ def run_game(
                 continue
 
         # Normal Frame Render
-        if os.name == 'nt': os.system('cls')
+        #if os.name == 'nt': os.system('cls')
         print(env.render())
         print()
         time.sleep(sleep_s)
 
-    # Final Game Over Screen
-    if os.name == 'nt': os.system('cls')
+    # Final Game Screen
+    #if os.name == 'nt': os.system('cls')
     print(env.render())
     print()
 
