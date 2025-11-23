@@ -48,7 +48,7 @@ def handle_death_pause(env: Environment, sleep_s: float):
     # Print Message
     print(f"\nPac-Man Became a Ghost Snack! 👻\nLives Left: {env.lives}")
     print("Get Ready!\n")
-    time.sleep(sleep_s * 6) # Pause longer for impact
+    time.sleep(sleep_s * 6)
     
     # Respawn Ghosts
     if not env.game_over:
@@ -65,7 +65,7 @@ def run_game(
     pacman_action = "WAIT"
 
     # Initial Render
-    #if os.name == 'nt': os.system('cls')
+    if os.name == 'nt': os.system('cls')
     print(env.render())
     print()
     time.sleep(sleep_s)
@@ -119,13 +119,13 @@ def run_game(
                 continue
 
         # Normal Frame Render
-        #if os.name == 'nt': os.system('cls')
+        if os.name == 'nt': os.system('cls')
         print(env.render())
         print()
         time.sleep(sleep_s)
 
     # Final Game Screen
-    #if os.name == 'nt': os.system('cls')
+    if os.name == 'nt': os.system('cls')
     print(env.render())
     print()
 

@@ -3,7 +3,7 @@ from utils.types_utils import Coord, Percept, MOVES
 from ghosts.KB import KnowledgeBase
 import random
 
-# --- State Definitions ---
+# State Definitions
 STATE_PATROLLING = "PATROLLING"
 STATE_CHASING = "CHASING"
 STATE_PURSUING = "PURSUING"

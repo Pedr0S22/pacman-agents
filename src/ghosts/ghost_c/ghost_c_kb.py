@@ -8,7 +8,7 @@ import random
 
 class KnowledgeBaseC(KnowledgeBase):
     """
-    KB for Ghost C: The Coordinator.
+    KB for Ghost C.
     Logic: Model-Based Utility Agent using First-Order Logic (FOL).
     
     FOL Rules Applied:
@@ -18,6 +18,7 @@ class KnowledgeBaseC(KnowledgeBase):
     4. ∀g,x,y: GhostPos(g,x,y) ∧ Distance(C,g)<4 → Repulse(x,y)
     5. ∀x,y: PacmanPos(x,y) ∧ PacmanVector(dx,dy) → Goal(x+3dx, y+3dy)
     6. ∀x,y: UnreachableGoal(x,y) → ¬Goal(x,y)
+    7. ETC
     """
     def __init__(self):
         # FOL Knowledge Base: Set of ground predicates
@@ -32,12 +33,12 @@ class KnowledgeBaseC(KnowledgeBase):
         self.Count = Variable("Count")
         self.T = Variable("T")
         
-        # Internal state (derived from FOL queries, not part of KB)
+        # Internal state
         self.my_pos: Coord = (24, 8)
         self.goal: Optional[Coord] = None
         self.current_path: List[Coord] = []
         
-        # Tracking for vector calculation (operational, not FOL)
+        # Tracking for vector calculation
         self.last_pacman_pos: Optional[Coord] = None
         self.last_pacman_vector: Tuple[int, int] = (0, 0)
 
@@ -51,18 +52,12 @@ class KnowledgeBaseC(KnowledgeBase):
         percepts: Percept
     ):
         """
-        Update KB with new percepts using FOL assertions.
-        
-        FOL Process:
-        1. Retract dynamic beliefs (GhostPos, PacmanPos, LastPos)
-        2. Learn map topology from percepts
-        3. Assert new dynamic beliefs
-        4. Compute and assert PacmanVector
+        Update KB with new percepts using FOL assertions.r
         """
         self.current_time += 1
         self.my_pos = my_pos
 
-        # --- FOL TEMPORAL UPDATES ---
+        # FOL Temportal feats
 
         # 1. Manage History (Keep last 10 steps)
         # Rule: ∀x,y,t: VisitedAtTime(x,y,t) ∧ (CurrentTime - t > 10) → Retract
@@ -71,15 +66,15 @@ class KnowledgeBaseC(KnowledgeBase):
         # 2. Assert current position in history
         # Assert: VisitedAtTime(my_pos.x, my_pos.y, current_time)
         self._assert_fact(VisitedAtTime(
-            Constant(my_pos[0]), 
-            Constant(my_pos[1]), 
+            Constant(my_pos[0]),
+            Constant(my_pos[1]),
             Constant(self.current_time)
         ))
 
-        # 3. Clean up old unreachable goals
+        # Clean up old unreachable goals
         self._retract_old_unreachable_goals(age_threshold=7)
         
-        # FOL Rule: Store last position to prevent backtracking
+        # FOL Rule 0: Store last position to prevent backtracking
         # Retract: ∀x,y: LastPos(C,x,y) → Retract
         self._retract(LastPos(Constant('C'), self.X, self.Y))
         # Assert: LastPos(C, my_pos.x, my_pos.y)
@@ -100,8 +95,8 @@ class KnowledgeBaseC(KnowledgeBase):
         # Assert: ∀g ∈ other_ghosts: GhostPos(g.id, g.x, g.y)
         for ghost_id, ghost_pos in other_ghost_pos:
             self._assert_fact(GhostPos(
-                Constant(ghost_id), 
-                Constant(ghost_pos[0]), 
+                Constant(ghost_id),
+                Constant(ghost_pos[0]),
                 Constant(ghost_pos[1])
             ))
         
@@ -109,7 +104,7 @@ class KnowledgeBaseC(KnowledgeBase):
         if pacman_pos:
             self._assert_fact(PacmanPos(Constant(pacman_pos[0]), Constant(pacman_pos[1])))
             
-            # Compute PacmanVector (operational calculation for FOL assertion)
+            # Compute PacmanVector
             if self.last_pacman_pos:
                 vx = pacman_pos[0] - self.last_pacman_pos[0]
                 vy = pacman_pos[1] - self.last_pacman_pos[1]
@@ -119,24 +114,22 @@ class KnowledgeBaseC(KnowledgeBase):
             self.last_pacman_pos = pacman_pos
             
             # Assert: PacmanVector(dx, dy)
-            self._assert_fact(PacmanVector(
-                Constant(self.last_pacman_vector[0]), 
-                Constant(self.last_pacman_vector[1])
-            ))
+            self._assert_fact(PacmanVector(Constant(self.last_pacman_vector[0]), Constant(self.last_pacman_vector[1])))
 
     def ask(self) -> str:
         """
         Infer best action using FOL queries and utility-based reasoning.
         
         FOL Decision Hierarchy:
-        1. IMMEDIATE DANGER: ∃g: GhostPos(g,x,y) ∧ g≠C ∧ Distance(C,g)≤4 → Repulse away
-        2. CLOSE CHASE: PacmanPos(x,y) ∧ Distance(C,P)≤2 → Chase directly
-        3. MEDIUM INTERCEPT: PacmanPos(x,y) ∧ 3≤Distance(C,P)≤4 → Intercept with vector
-        4. EXPLORATION: Explore frontier or spread
+        1. OSCILLATION DETECTION: EscapeState(gx, gy, t) ∧ (CurrentTime - t < 20) ∧ Dist(Me, Goal) > 0
+        2. GHOST SURRONDINGS: ∃g: GhostPos(g,x,y) ∧ g≠C ∧ Distance(C,g)≤4 → Repulse away
+        3. CLOSE CHASE: PacmanPos(x,y) ∧ Distance(C,P)≤2 → Chase directly
+        4. MEDIUM INTERCEPT: PacmanPos(x,y) ∧ 3≤Distance(C,P)≤4 → Intercept with vector
+        5. EXPLORATION: Explore frontier or spread
         """
-        
-        print(f"[DEBUG] Pos={self.my_pos} Goal={self.goal}")
-        print(f"        Path: {[f'{i}:{p}' for i,p in enumerate(self.current_path)]}")
+        # Debug Ghost C
+        #print(f"[DEBUG] Pos={self.my_pos} Goal={self.goal}")
+        #print(f"        Path: {[f'{i}:{p}' for i,p in enumerate(self.current_path)]}")
 
         new_goal = None
 
@@ -148,12 +141,12 @@ class KnowledgeBaseC(KnowledgeBase):
         if escape_target:
             if escape_target == self.my_pos:
                 # We reached the safe haven! Clear the state.
-                print(f"[ESCAPE] Reached safety at {escape_target}. Resuming normal logic.")
+                #print(f"[ESCAPE] Reached safety at {escape_target}. Resuming normal logic.")
                 self._retract_escape_state()
             else:
                 # Keep running to the escape target
                 new_goal = escape_target
-                print(f"[PRIORITY 0] ESCAPING OSCILLATION -> {new_goal}")
+                #print(f"[PRIORITY 0] ESCAPING OSCILLATION -> {new_goal}")
 
         # === PRIORITY 0.5: DETECT NEW OSCILLATION ===
         if new_goal is None and self._infer_oscillation():
@@ -161,7 +154,7 @@ class KnowledgeBaseC(KnowledgeBase):
             far_goal = self._find_farthest_safe_tile()
             
             if far_goal:
-                print(f"[LOGIC] OSCILLATION DETECTED. Initiating Long-Range Escape to {far_goal}")
+                #print(f"[LOGIC] OSCILLATION DETECTED. Initiating Long-Range Escape to {far_goal}")
                 
                 # Assert the new state into KB
                 self._assert_fact(EscapeState(
@@ -182,7 +175,7 @@ class KnowledgeBaseC(KnowledgeBase):
         if nearby_ghosts:
             # FOL Inference: Flee away from visible ghosts
             new_goal = self._infer_repulsion_goal(nearby_ghosts)
-            print(f"[PRIORITY 1] REPULSION from ghosts at {nearby_ghosts}")
+            #print(f"[PRIORITY 1] REPULSION from ghosts at {nearby_ghosts}")
 
         # === PRIORITY 2: CLOSE CHASE (distance ≤ 2) ===
         # FOL Query: PacmanPos(px,py) ∧ Distance(C,P)≤2
@@ -200,7 +193,7 @@ class KnowledgeBaseC(KnowledgeBase):
                         chase_goal = (px, py)
                         if chase_goal and not self._is_unreachable_goal(chase_goal):
                             new_goal = chase_goal
-                            print(f"[PRIORITY 2] CHASE Pacman at {(px, py)}, distance={distance_to_pacman}")
+                            #print(f"[PRIORITY 2] CHASE Pacman at {(px, py)}, distance={distance_to_pacman}")
 
         # === PRIORITY 3: INTERCEPT (3 ≤ distance ≤ 4) ===
         # FOL Query: PacmanPos(px,py) ∧ 3≤Distance(C,P)≤4 ∧ PacmanVector(vx,vy)
@@ -231,21 +224,21 @@ class KnowledgeBaseC(KnowledgeBase):
                 aligned_goal = self._find_vector_aligned_frontier(vector_info)
                 if aligned_goal and not self._is_unreachable_goal(aligned_goal):
                     new_goal = aligned_goal
-                    print(f"[PRIORITY 4] VECTOR-ALIGNED EXPLORATION with vector {vector_info}")
+                    #print(f"[PRIORITY 4] VECTOR-ALIGNED EXPLORATION with vector {vector_info}")
 
         # === PRIORITY 5: FRONTIER EXPLORATION ===
         if new_goal is None:
             frontier_goal = self._find_nearest_frontier_goal()
             if frontier_goal and not self._is_unreachable_goal(frontier_goal):
                 new_goal = frontier_goal
-                print(f"[PRIORITY 5] FRONTIER EXPLORATION")
+                #print(f"[PRIORITY 5] FRONTIER EXPLORATION")
 
         # === PRIORITY 6: SPREAD (DEFAULT) ===
         if new_goal is None:
             spread_goal = self._find_spread_goal()
             if spread_goal and not self._is_unreachable_goal(spread_goal):
                 new_goal = spread_goal
-                print(f"[PRIORITY 6] SPREAD")
+                #print(f"[PRIORITY 6] SPREAD")
 
         # === PATHFINDING & EXECUTION ===
         if new_goal:
@@ -256,7 +249,7 @@ class KnowledgeBaseC(KnowledgeBase):
                 safe_coords = self._query_all_safe_coords()
                 
                 safe_coords.add(self.goal)
-                # BFS pathfinding on safe coordinate set
+
                 new_path = bfs_pathfinder(self.my_pos, self.goal, safe_coords)
                 
                 if not new_path:
@@ -286,9 +279,9 @@ class KnowledgeBaseC(KnowledgeBase):
         if self.current_path:
             # CRITICAL: Validate path includes current position
             if self.my_pos not in self.current_path:
-                print(f"[ERROR] Path invalid! my_pos={self.my_pos} not in path={self.current_path}")
+                #print(f"[ERROR] Path invalid! my_pos={self.my_pos} not in path={self.current_path}")
                 self.current_path = []
-                self.goal = None 
+                self.goal = None
                 return self._get_safe_fallback_move()
             
             idx = self.current_path.index(self.my_pos)
@@ -296,8 +289,7 @@ class KnowledgeBaseC(KnowledgeBase):
             if idx + 1 < len(self.current_path):
                 next_pos = self.current_path[idx + 1]
                 
-                # [FIX] Allow move if the position is known safe OR if it is our specific goal
-                # We must take the risk to step into the goal to learn what it is.
+                # Take the risk to step into the goal to learn what it is.
                 is_safe = self._is_position_safe(next_pos)
                 is_target_goal = (next_pos == self.goal)
 
@@ -307,13 +299,13 @@ class KnowledgeBaseC(KnowledgeBase):
                         move = get_move_from_path(self.my_pos, [self.my_pos, next_pos])
                         return move
                     else:
-                        print(f"[ERROR] Next pos not adjacent! dist={dist}")
+                        #print(f"[ERROR] Next pos not adjacent! dist={dist}")
                         self.current_path = []
                         self.goal = None
                         return self._get_safe_fallback_move()
                 else:
                     # Next position is unsafe and NOT our goal - Abort
-                    print(f"[BLOCKED] Next pos {next_pos} is unsafe and not goal.")
+                    #print(f"[BLOCKED] Next pos {next_pos} is unsafe and not goal.")
                     self.current_path = []
                     self.goal = None
                     return self._get_safe_fallback_move()
@@ -324,10 +316,10 @@ class KnowledgeBaseC(KnowledgeBase):
                 self.goal = None
         
         return self._get_safe_fallback_move()
+    
 
-    # ========================================================================
-    # FOL MAP LEARNING
-    # ========================================================================
+    # --- Internal Logic Helpers ---
+
 
     def _learn_map_topology(self, my_pos: Coord, percepts: Percept):
         """
@@ -356,9 +348,6 @@ class KnowledgeBaseC(KnowledgeBase):
                 if not self._query_exists(LearnedSafe(px, py)):
                     self._assert_fact(LearnedSafe(px, py))
 
-    # ========================================================================
-    # FOL QUERY METHODS
-    # ========================================================================
 
     def _query_nearby_ghosts(self, repulsion_distance: int) -> List[Coord]:
         """
@@ -460,25 +449,22 @@ class KnowledgeBaseC(KnowledgeBase):
             else:
                 return True  # Path doesn't include our position (invalid)
         
-        # FOL Check: ∃(x,y)∈path: ¬LearnedSafe(x,y)
+        # FOL: ∃(x,y)∈path: ¬LearnedSafe(x,y)
         for tile in self.current_path:
             if not self._is_position_safe(tile):
                 return True
         
         return False
 
-    # ========================================================================
-    # FOL INFERENCE METHODS (Goal Selection)
-    # ========================================================================
 
     def _infer_repulsion_goal(self, threatening_ghosts: List[Coord]) -> Optional[Coord]:
         """
         FOL Inference: Find safe tile maximizing distance from visible threatening ghosts.
         
         Since we can only see 4 tiles in each direction, threatening ghosts are always
-        within vision range (distance ≤ 4). We want to move AWAY from them.
+        within vision range (distance ≤ 4). We want to move away from them.
         
-        Strategy: Find the direction opposite to the average ghost position and move there.
+        Strategy: Find the direction opposite to the average ghost current position and move there.
         """
         safe_tiles = self._query_all_safe_coords()
         
@@ -513,7 +499,7 @@ class KnowledgeBaseC(KnowledgeBase):
             
             # Minimum distance to any threat (the closer the threat, the worse)
             min_threat_dist = min(
-                abs(tx - gx) + abs(ty - gy) 
+                abs(tx - gx) + abs(ty - gy)
                 for gx, gy in threatening_ghosts
             )
             
@@ -552,15 +538,13 @@ class KnowledgeBaseC(KnowledgeBase):
         if dist == 1:
             return nearest_frontier
         
-        # ✅ FIX: Return a SAFE tile adjacent to the frontier, not the frontier itself
         # Find which safe tile is adjacent to this frontier
         for neighbor in get_neighbors(nearest_frontier):
             if neighbor in safe_coords:
                 # This is a safe tile adjacent to the frontier
-                # Path to THIS instead of the frontier
                 return neighbor
         
-        print("SHIT HAPPEN: _FIND_NEAREST_FRONTIER: NONE")
+        #print("BUG HAPPEN: _FIND_NEAREST_FRONTIER: NONE")
         return None  # No safe tile adjacent to frontier (shouldn't happen)
 
     def _find_vector_aligned_frontier(self, vector: Tuple[int, int]) -> Optional[Coord]:
@@ -595,12 +579,12 @@ class KnowledgeBaseC(KnowledgeBase):
             if not best_frontier:
                 return None
                 
-            # [FIX 3] If adjacent, target the frontier directly
+            # If adjacent, target the frontier directly
             dist = abs(self.my_pos[0] - best_frontier[0]) + abs(self.my_pos[1] - best_frontier[1])
             if dist == 1:
                 return best_frontier
 
-            # ✅ FIX: Return safe tile adjacent to frontier
+            # Return safe tile adjacent to frontier
             safe_coords = self._query_all_safe_coords()
             for neighbor in get_neighbors(best_frontier):
                 if neighbor in safe_coords:
@@ -624,8 +608,8 @@ class KnowledgeBaseC(KnowledgeBase):
     def _compute_frontier(self) -> Set[Coord]:
         """
         FOL Inference: Compute frontier tiles
-        Frontier(fx,fy) ≡ ∃sx,sy: LearnedSafe(sx,sy) ∧ Neighbor(sx,sy,fx,fy) 
-                          ∧ ¬LearnedSafe(fx,fy) ∧ ¬LearnedWall(fx,fy)
+        Frontier(fx,fy) ≡ ∃sx,sy: LearnedSafe(sx,sy) ∧ Neighbor(sx,sy,fx,fy)
+            ∧ ¬LearnedSafe(fx,fy) ∧ ¬LearnedWall(fx,fy)
         """
         safe_tiles = self._query_all_safe_coords()
         frontier = set()
@@ -641,10 +625,6 @@ class KnowledgeBaseC(KnowledgeBase):
                     frontier.add(neighbor)
         
         return frontier
-
-    # ========================================================================
-    # FOL KB MANAGEMENT
-    # ========================================================================
 
     def _assert_fact(self, fact: Predicate):
         """Assert a ground fact into the knowledge base."""

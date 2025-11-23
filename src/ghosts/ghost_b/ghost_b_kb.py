@@ -7,11 +7,9 @@ import random
 
 class KnowledgeBaseB(KnowledgeBase):
     """
-    KB for Ghost B (The Analyst).
-    Logic: Optimistic Model-Based Agent.
-    FIX: Uses a 'Planning Mesh' (Safe + Unknown) to allow the pathfinder 
-    to route through the fog of war.
-    Now tracks the last 8 visited junctions to avoid repetitive patrolling.
+    KB for Ghost B.
+    Logic: Optimistic Model-Based Agent using PL to route through the fog of war.
+    It also tracks the last n visited junctions to avoid repetitive patrolling.
     """
     def __init__(self):
         # --- World Model ---
@@ -27,10 +25,10 @@ class KnowledgeBaseB(KnowledgeBase):
         self.my_pos: Optional[Coord] = None
         self.pacman_visible: bool = False
         self.pacman_last_pos: Optional[Coord] = None
-        self.percepts: Percept = {} 
+        self.percepts: Percept = {}
         
         # --- Memory & Plan ---
-        self.clues: List[Tuple[Coord, int]] = [] 
+        self.clues: List[Tuple[Coord, int]] = []
         self.goal: Optional[Coord] = None
         self.current_path: List[Coord] = []
         
@@ -42,11 +40,11 @@ class KnowledgeBaseB(KnowledgeBase):
         self.is_loitering: bool = False
         self.loiter_timer: int = 0
         self.loiter_anchor: Optional[Coord] = None
-        self.MAX_LOITER_TIME: int = 4 
+        self.MAX_LOITER_TIME: int = 4
 
     def tell(self, my_pos: Coord, pacman_pos: Optional[Coord], other_ghost_pos: List[Tuple[str, Coord]], percepts: Percept):
         self.my_pos = my_pos
-        self.percepts = percepts 
+        self.percepts = percepts
         
         # FIRST TURN FIX — Pre-seed map knowledge BEFORE any decision logic runs
         if not self.initialized:
@@ -87,7 +85,7 @@ class KnowledgeBaseB(KnowledgeBase):
         if pacman_pos:
             self.pacman_visible = True
             self.pacman_last_pos = pacman_pos
-            self.clues = [] 
+            self.clues = []
             self.is_loitering = False
             self.goal = None # Reset goal to chase immediately
         else:
@@ -126,7 +124,7 @@ class KnowledgeBaseB(KnowledgeBase):
             self.loiter_timer -= 1
             if self.loiter_timer <= 0 or self.pacman_visible:
                 self.is_loitering = False
-                self.goal = None 
+                self.goal = None
                 self.current_path = []
             else:
                 return self._execute_loiter_step(planning_mesh)
@@ -151,12 +149,12 @@ class KnowledgeBaseB(KnowledgeBase):
                 self.loiter_anchor = self.my_pos
                 
                 # Clear goal/path BUT return WAIT to hold position
-                self.goal = None 
+                self.goal = None
                 self.current_path = []
                 return 'WAIT'
             else:
                 # Reached non-junction goal (e.g. clue) -> just clear and continue
-                self.goal = None 
+                self.goal = None
                 self.current_path = []
 
         # 3. GOAL SELECTION
@@ -205,8 +203,10 @@ class KnowledgeBaseB(KnowledgeBase):
 
         # 6. FALLBACK
         return self._get_random_optimistic_move()
+    
 
-    # --- Helpers ---
+    # --- Internal Logic Helpers ---
+
 
     def _execute_loiter_step(self, mesh: Set[Coord]) -> str:
         if self.my_pos == self.loiter_anchor:
@@ -293,7 +293,7 @@ class KnowledgeBaseB(KnowledgeBase):
                 self.unknown_tiles.add(n)
         
         self._infer_junction(pos)
-        for n in get_neighbors(pos): 
+        for n in get_neighbors(pos):
             if n in self.safe_tiles: self._infer_junction(n)
 
     def _infer_junction(self, pos: Coord):
