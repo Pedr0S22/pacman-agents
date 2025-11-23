@@ -71,64 +71,6 @@ class KnowledgeBaseA(KnowledgeBase):
         # --- State Transition Logic (PL Rules) ---
         self._update_state_logic()
 
-    def _update_state_logic(self) -> None:
-        """
-        Applies State Transition Rules (P => Q).
-        """
-        # Rule 1: Detection
-        # Proposition: SeePacman => State_Chasing
-        if self.see_pacman:
-            self.state_patrolling: bool = False
-            self.state_chasing: bool = True
-            self.state_pursuing: bool = False
-            self.state_investigating: bool = False
-
-            self.last_known_pacman = self.pacman_pos_percept
-            return
-
-        # Rule 2: Lost Sight (Persistence)
-        # Proposition: State_Chasing ^ not SeePacman => State_Pursuing
-        if self.state_chasing and not self.see_pacman:
-            self.state_patrolling: bool = False
-            self.state_chasing: bool = False
-            self.state_pursuing: bool = True
-            self.state_investigating: bool = False
-            return
-        
-        # Rule 3: Arrival at Last Known Location
-        # Proposition: State_Pursuing ^ (MyPos == LastKnownPacman) => State_Investigating
-        if self.state_pursuing and self.my_pos == self.last_known_pacman:
-            self.state_patrolling: bool = False
-            self.state_chasing: bool = False
-            self.state_pursuing: bool = False
-            self.state_investigating: bool = True
-            # Select a valid neighbor to investigate that isn't a wall
-            # Exists n in Neighbors(MyPos): Safe_n => InvestigationTarget = n
-            options = [n for n in self._get_neighbors(self.my_pos) if n not in self.walls]
-            if options:
-                self.investigation_target = random.choice(options)
-            else:
-                self.state_patrolling: bool = True
-                self.state_chasing: bool = False
-                self.state_pursuing: bool = False
-                self.state_investigating: bool = False
-            return
-
-        # Rule 4: Finished Investigating
-        # Proposition: State_Investigating ^ (MyPos == InvestigationTarget) => State_Patrolling
-        # Proposition: State_Investigating ^ Wall(InvestigationTarget) => State_Patrolling
-        if self.state_investigating:
-            if self.my_pos == self.investigation_target:
-                self.state_patrolling: bool = True
-                self.state_chasing: bool = False
-                self.state_pursuing: bool = False
-                self.state_investigating: bool = False
-            elif self.investigation_target in self.walls:
-                self.state_patrolling: bool = True
-                self.state_chasing: bool = False
-                self.state_pursuing: bool = False
-                self.state_investigating: bool = False
-            return
 
     def ask(self) -> str:
         """
@@ -162,6 +104,57 @@ class KnowledgeBaseA(KnowledgeBase):
 
         
     # --- Internal Logic Helpers ---
+
+    def _update_state_logic(self) -> None:
+        """
+        Applies State Transition Rules (P => Q).
+        """
+        # Rule 1: Detection
+        # Proposition: SeePacman => State_Chasing
+        if self.see_pacman:
+            self._set_state(chasing=True)
+            self.last_known_pacman = self.pacman_pos_percept
+            return
+
+        # Rule 2: Lost Sight (Persistence)
+        # Proposition: State_Chasing ^ not SeePacman => State_Pursuing
+        if self.state_chasing and not self.see_pacman:
+            self._set_state(pursuing=True)
+            return
+        
+        # Rule 3: Arrival at Last Known Location
+        # Proposition: State_Pursuing ^ (MyPos == LastKnownPacman) => State_Investigating
+        if self.state_pursuing and self.my_pos == self.last_known_pacman:
+            self._set_state(investigating=True)
+            
+            # Picking target
+            options = [n for n in self._get_neighbors(self.my_pos) if n not in self.walls]
+            if options:
+                self.investigation_target = random.choice(options)
+            else:
+                self._set_state(patrolling=True)
+            return
+
+        # Rule 4: Finished Investigating
+        # Proposition: State_Investigating ^ (MyPos == InvestigationTarget) => State_Patrolling
+        # Proposition: State_Investigating ^ Wall(InvestigationTarget) => State_Patrolling
+        if self.state_investigating:
+            target_reached = (self.my_pos == self.investigation_target)
+            target_blocked = (self.investigation_target in self.walls)
+            
+            if target_reached or target_blocked:
+                self._set_state(patrolling=True)
+            return
+
+
+    def _set_state(self, patrolling=False, chasing=False, pursuing=False, investigating=False):
+        """
+        Enforces Mutual Exclusivity: Only the passed True argument becomes active.
+        """
+        self.state_patrolling = patrolling
+        self.state_chasing = chasing
+        self.state_pursuing = pursuing
+        self.state_investigating = investigating
 
 
     def _get_neighbors(self, pos: Coord) -> List[Coord]:
