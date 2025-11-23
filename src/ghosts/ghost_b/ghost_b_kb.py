@@ -32,7 +32,7 @@ class KnowledgeBaseB(KnowledgeBase):
         self.goal: Optional[Coord] = None
         self.current_path: List[Coord] = []
         
-        # Junction Memory (Last 8 visited)
+        # --- Junction Memory ---
         self.visited_junctions: Deque[Coord] = deque(maxlen=12)
         
         # --- Camping Logic ---
