@@ -33,7 +33,6 @@ class KnowledgeBaseB(KnowledgeBase):
         self.current_path: List[Coord] = []
         
         # Junction Memory (Last 8 visited)
-        # "CREATE A DATA STRUCTURE THAT SAVES LAST 12 JUNCTIONS"
         self.visited_junctions: Deque[Coord] = deque(maxlen=12)
         
         # --- Camping Logic ---
@@ -46,7 +45,6 @@ class KnowledgeBaseB(KnowledgeBase):
         self.my_pos = my_pos
         self.percepts = percepts
         
-        # FIRST TURN FIX — Pre-seed map knowledge BEFORE any decision logic runs
         if not self.initialized:
             self._mark_safe(my_pos)     # Mark current tile safe
             for n in get_neighbors(my_pos):  # Pre-seed unknown frontier
@@ -62,7 +60,7 @@ class KnowledgeBaseB(KnowledgeBase):
             if item == "WALL":
                 self.walls.add(pos)
                 self.safe_tiles.discard(pos)
-                self.unknown_tiles.discard(pos) # Wall is no longer unknown
+                self.unknown_tiles.discard(pos)
                 self.junctions.discard(pos)
             else:
                 self._mark_safe(pos) # Visible tiles are safe
@@ -76,7 +74,7 @@ class KnowledgeBaseB(KnowledgeBase):
         # 2. Update Clues
         alive_clues = []
         for c_pos, c_age in self.clues:
-            if c_pos == self.my_pos: continue 
+            if c_pos == self.my_pos: continue
             if self.pacman_visible: continue
             if c_age < 25: alive_clues.append((c_pos, c_age + 1))
         self.clues = alive_clues
@@ -97,8 +95,7 @@ class KnowledgeBaseB(KnowledgeBase):
     def ask(self) -> str:
         if self.my_pos is None: return 'WAIT'
 
-        # --- CRITICAL FIX: THE PLANNING MESH ---
-        # We combine Safe + Unknown. We treat "Unknown" as "Walkable until proven otherwise".
+        # We treat "Unknown" as "Walkable until proven otherwise".
         # This allows BFS to find paths through the fog.
         planning_mesh = self.safe_tiles.union(self.unknown_tiles)
         # Ensure my current position is strictly in the mesh to avoid start-node errors
@@ -285,7 +282,7 @@ class KnowledgeBaseB(KnowledgeBase):
         if pos in self.safe_tiles: return
         self.safe_tiles.add(pos)
         self.walls.discard(pos)
-        self.unknown_tiles.discard(pos) # IMPORTANT: Remove from unknown once visited
+        self.unknown_tiles.discard(pos)
         
         # Add neighbors to unknown if they are fresh
         for n in get_neighbors(pos):
