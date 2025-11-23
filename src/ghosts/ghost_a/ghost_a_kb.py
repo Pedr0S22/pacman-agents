@@ -114,13 +114,11 @@ class KnowledgeBaseA(KnowledgeBase):
         if self.see_pacman:
             self._set_state(chasing=True)
             self.last_known_pacman = self.pacman_pos_percept
-            return
 
         # Rule 2: Lost Sight (Persistence)
         # Proposition: State_Chasing ^ not SeePacman => State_Pursuing
         if self.state_chasing and not self.see_pacman:
             self._set_state(pursuing=True)
-            return
         
         # Rule 3: Arrival at Last Known Location
         # Proposition: State_Pursuing ^ (MyPos == LastKnownPacman) => State_Investigating
@@ -133,7 +131,6 @@ class KnowledgeBaseA(KnowledgeBase):
                 self.investigation_target = random.choice(options)
             else:
                 self._set_state(patrolling=True)
-            return
 
         # Rule 4: Finished Investigating
         # Proposition: State_Investigating ^ (MyPos == InvestigationTarget) => State_Patrolling
@@ -144,7 +141,6 @@ class KnowledgeBaseA(KnowledgeBase):
             
             if target_reached or target_blocked:
                 self._set_state(patrolling=True)
-            return
 
 
     def _set_state(self, patrolling=False, chasing=False, pursuing=False, investigating=False):
