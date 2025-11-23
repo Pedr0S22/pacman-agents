@@ -3,12 +3,6 @@ from utils.types_utils import Coord, Percept, MOVES
 from ghosts.KB import KnowledgeBase
 import random
 
-# State Definitions
-STATE_PATROLLING = "PATROLLING"
-STATE_CHASING = "CHASING"
-STATE_PURSUING = "PURSUING"
-STATE_INVESTIGATING = "INVESTIGATING"
-
 class KnowledgeBaseA(KnowledgeBase):
     """
     KB for Ghost A.
@@ -29,7 +23,11 @@ class KnowledgeBaseA(KnowledgeBase):
         self.safe_tiles: Set[Coord] = set()
         
         # State Propositions (Only one is True at a time)
-        self.current_state: str = STATE_PATROLLING
+        # state_PA <=> not state_C and not state_PU and not state_I
+        self.state_patrolling: bool = True
+        self.state_chasing: bool = False
+        self.state_pursuing: bool = False
+        self.state_investigating: bool = False
         
         # Beliefs (Memory Propositions)
         self.last_known_pacman: Optional[Coord] = None
@@ -80,37 +78,56 @@ class KnowledgeBaseA(KnowledgeBase):
         # Rule 1: Detection
         # Proposition: SeePacman => State_Chasing
         if self.see_pacman:
-            self.current_state = STATE_CHASING
+            self.state_patrolling: bool = False
+            self.state_chasing: bool = True
+            self.state_pursuing: bool = False
+            self.state_investigating: bool = False
+
             self.last_known_pacman = self.pacman_pos_percept
             return
 
         # Rule 2: Lost Sight (Persistence)
         # Proposition: State_Chasing ^ not SeePacman => State_Pursuing
-        if self.current_state == STATE_CHASING and not self.see_pacman:
-            self.current_state = STATE_PURSUING
+        if self.state_chasing and not self.see_pacman:
+            self.state_patrolling: bool = False
+            self.state_chasing: bool = False
+            self.state_pursuing: bool = True
+            self.state_investigating: bool = False
             return
         
         # Rule 3: Arrival at Last Known Location
         # Proposition: State_Pursuing ^ (MyPos == LastKnownPacman) => State_Investigating
-        if self.current_state == STATE_PURSUING and self.my_pos == self.last_known_pacman:
-            self.current_state = STATE_INVESTIGATING
+        if self.state_pursuing and self.my_pos == self.last_known_pacman:
+            self.state_patrolling: bool = False
+            self.state_chasing: bool = False
+            self.state_pursuing: bool = False
+            self.state_investigating: bool = True
             # Select a valid neighbor to investigate that isn't a wall
             # Exists n in Neighbors(MyPos): Safe_n => InvestigationTarget = n
             options = [n for n in self._get_neighbors(self.my_pos) if n not in self.walls]
             if options:
                 self.investigation_target = random.choice(options)
             else:
-                self.current_state = STATE_PATROLLING
+                self.state_patrolling: bool = True
+                self.state_chasing: bool = False
+                self.state_pursuing: bool = False
+                self.state_investigating: bool = False
             return
 
         # Rule 4: Finished Investigating
         # Proposition: State_Investigating ^ (MyPos == InvestigationTarget) => State_Patrolling
         # Proposition: State_Investigating ^ Wall(InvestigationTarget) => State_Patrolling
-        if self.current_state == STATE_INVESTIGATING:
+        if self.state_investigating:
             if self.my_pos == self.investigation_target:
-                self.current_state = STATE_PATROLLING
+                self.state_patrolling: bool = True
+                self.state_chasing: bool = False
+                self.state_pursuing: bool = False
+                self.state_investigating: bool = False
             elif self.investigation_target in self.walls:
-                self.current_state = STATE_PATROLLING
+                self.state_patrolling: bool = True
+                self.state_chasing: bool = False
+                self.state_pursuing: bool = False
+                self.state_investigating: bool = False
             return
 
     def ask(self) -> str:
@@ -122,17 +139,17 @@ class KnowledgeBaseA(KnowledgeBase):
 
         # Query 1: Chasing Logic
         # Proposition: State_Chasing => MoveTowards(LastKnownPacman)
-        if self.current_state == STATE_CHASING:
+        if self.state_chasing:
             action = self._smart_move(self.last_known_pacman)
 
         # Query 2: Pursuing Logic
         # Proposition: State_Pursuing => MoveTowards(LastKnownPacman)
-        elif self.current_state == STATE_PURSUING:
+        elif self.state_pursuing:
             action = self._smart_move(self.last_known_pacman)
 
         # Query 3: Investigating Logic
         # Proposition: State_Investigating => MoveTowards(InvestigationTarget)
-        elif self.current_state == STATE_INVESTIGATING:
+        elif self.state_investigating:
             action = self._smart_move(self.investigation_target)
 
         # Query 4: Patrolling Logic (Default)
