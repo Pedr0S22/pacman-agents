@@ -19,11 +19,9 @@ def bfs_pathfinder(
     if start_pos == goal_pos:
         return [start_pos]
     
-    # ✅ FIX: Check if goal is even reachable (in safe_tiles)
     if goal_pos not in safe_tiles:
         return None  # Goal is not safe/reachable
     
-    # ✅ FIX: Also ensure start_pos is in safe_tiles
     if start_pos not in safe_tiles:
         return None
 
